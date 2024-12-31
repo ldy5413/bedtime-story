@@ -1,8 +1,9 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 import sqlite3
 from gtts import gTTS
 from openai import OpenAI
 import os
+import io
 
 app = Flask(__name__)
 DATABASE = 'stories.db'
@@ -24,15 +25,16 @@ def generate_story(theme, language='en'):
         client = OpenAI(api_key=api_key, base_url=api_url)
         
         system_message = "You are a creative children's story writer."
+        content = f"Write a medium length bedtime story (around 1000 words) that combines these themes: {theme}. Make it appropriate for children aged 3-8."
         if language == 'zh':
             system_message = "你是一个富有创意的儿童故事作家。"
+            content = f"写一个结合这些主题的中等长度的睡前故事（大约1000字）：{theme}。故事要适合3-8岁的儿童。"
             
         response = client.chat.completions.create(
             model="deepseek-chat",
             messages=[
                 {"role": "system", "content": system_message},
-                {"role": "user", "content": f"Write a medium length bedtime story (around 1000 words) about {theme}. Make it appropriate for children aged 3-8."} if language == 'en' else
-                {"role": "user", "content": f"写一个关于{theme}的中等长度的睡前故事（大约1000字）。故事要适合3-8岁的儿童。"}
+                {"role": "user", "content": content},
             ],
             stream=False,
         )
@@ -58,10 +60,23 @@ def generate_audio(content, language='en'):
 def index():
     return render_template('index.html')
 
+def detect_language(text):
+    """Detect if text contains Chinese characters"""
+    return 'zh' if any('\u4e00' <= char <= '\u9fff' for char in text) else 'en'
+
 @app.route('/generate', methods=['POST'])
 def generate():
     theme = request.json['theme']
     language = request.json.get('language', 'en')  # Default to English
+    
+    # Detect input language
+    input_lang = detect_language(theme)
+    if input_lang != language:
+        return jsonify({
+            'warning': f'Your input appears to be in {input_lang}, but the selected language is {language}. Consider changing the language setting.',
+            'story': None
+        }), 400
+    
     story = generate_story(theme, language)
     save_story(theme, story)
     return jsonify({'story': story})
@@ -72,6 +87,26 @@ def read():
     language = request.json.get('language', 'en')  # Default to English
     audio_file = generate_audio(story, language)
     return jsonify({'audio_file': audio_file})
+
+@app.route('/stream_audio', methods=['POST'])
+def stream_audio():
+    story = request.json['story']
+    language = request.json.get('language', 'en')  # Default to English
+    lang = 'zh-cn' if language == 'zh' else 'en'
+    
+    def generate():
+        # Split story into chunks for streaming
+        chunk_size = 1000
+        for i in range(0, len(story), chunk_size):
+            chunk = story[i:i + chunk_size]
+            tts = gTTS(text=chunk, lang=lang)
+            fp = io.BytesIO()
+            tts.write_to_fp(fp)
+            fp.seek(0)
+            yield fp.read()
+            fp.close()
+
+    return Response(generate(), mimetype='audio/mpeg')
 
 @app.route('/stories', methods=['GET'])
 def get_stories():
@@ -84,7 +119,8 @@ def get_stories():
             formatted_stories = []
             for story in stories:
                 story_id, theme, content = story
-                preview = ' '.join(content.split()[:50])  # Get first 50 words
+                # For Chinese, take first 100 characters; for others, first 50 words
+                preview = content[:100] if any('\u4e00' <= char <= '\u9fff' for char in content) else ' '.join(content.split()[:50])
                 formatted_stories.append({
                     'id': story_id,
                     'theme': theme,
@@ -110,6 +146,15 @@ def get_story(story_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/stories/<int:story_id>', methods=['DELETE'])
+def delete_story(story_id):
+    try:
+        with sqlite3.connect(DATABASE) as conn:
+            conn.execute('DELETE FROM stories WHERE id = ?', (story_id,))
+            return jsonify({'message': 'Story deleted successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True)
+    app.run(debug=True,host='0.0.0.0')

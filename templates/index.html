@@ -92,7 +92,7 @@
                     <option value="zh">中文 (Chinese)</option>
                 </select>
             </div>
-            <textarea id="themeInput" placeholder="Enter story theme or topic..."></textarea>
+            <textarea id="themeInput" placeholder="Enter story themes or topics (separated by commas)..."></textarea>
             <button id="generateBtn">Generate Story</button>
             <button id="readBtn">Read Story</button>
         </div>
@@ -122,11 +122,30 @@
                             <h3>${story.theme}</h3>
                             <p>${story.preview}...</p>
                             <button class="read-story-btn" data-id="${story.id}">Read</button>
+                            <button class="delete-story-btn" data-id="${story.id}">Delete</button>
                         </div>
                     `).join('');
                 } else {
                     container.innerHTML = '<p>No stories saved yet.</p>';
                 }
+                
+                // Add event listeners for delete buttons
+                document.querySelectorAll('.delete-story-btn').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        if (confirm('Are you sure you want to delete this story?')) {
+                            try {
+                                const response = await fetch(`/stories/${btn.dataset.id}`, {
+                                    method: 'DELETE'
+                                });
+                                if (response.ok) {
+                                    loadStories(); // Refresh the story list
+                                }
+                            } catch (error) {
+                                console.error('Error deleting story:', error);
+                            }
+                        }
+                    });
+                });
             } catch (error) {
                 console.error('Error loading stories:', error);
             }
@@ -166,33 +185,62 @@
                 }
             }
         });
+        // Add warning modal to HTML
+        const modalHTML = `
+            <div id="warningModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5);">
+                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 5px; text-align: center;">
+                    <p id="warningMessage"></p>
+                    <button onclick="document.getElementById('warningModal').style.display = 'none'">OK</button>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+
         document.getElementById('generateBtn').addEventListener('click', async () => {
             const theme = document.getElementById('themeInput').value;
             const language = document.getElementById('language').value;
-            const response = await fetch('/generate', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ theme, language })
-            });
-            const data = await response.json();
-            document.getElementById('storyOutput').textContent = data.story;
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ theme, language })
+                });
+                const data = await response.json();
+                if (response.status === 400 && data.warning) {
+                    // Show warning modal
+                    document.getElementById('warningMessage').textContent = data.warning;
+                    document.getElementById('warningModal').style.display = 'block';
+                } else if (data.story) {
+                    document.getElementById('storyOutput').textContent = data.story;
+                }
+            } catch (error) {
+                console.error('Error generating story:', error);
+            }
         });
 
         document.getElementById('readBtn').addEventListener('click', async () => {
             const story = document.getElementById('storyOutput').textContent;
-            const response = await fetch('/read', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ story })
-            });
-            const data = await response.json();
+            const language = document.getElementById('language').value;
             const audioPlayer = document.getElementById('audioPlayer');
-            audioPlayer.src = data.audio_file;
-            audioPlayer.play();
+            audioPlayer.src = '/stream_audio';
+            audioPlayer.type = 'audio/mpeg';
+            
+            // Create a new request with the story content
+            const request = new XMLHttpRequest();
+            request.open('POST', '/stream_audio', true);
+            request.setRequestHeader('Content-Type', 'application/json');
+            request.responseType = 'arraybuffer';
+            
+            request.onload = function() {
+                const blob = new Blob([request.response], {type: 'audio/mpeg'});
+                const url = URL.createObjectURL(blob);
+                audioPlayer.src = url;
+                audioPlayer.play();
+            };
+            
+            request.send(JSON.stringify({ story, language }));
         });
     </script>
 </body>

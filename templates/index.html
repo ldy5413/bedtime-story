@@ -167,18 +167,24 @@
                         // Display the story
                         document.getElementById('storyOutput').textContent = data.story;
                         
-                        // Generate and play audio
-                        const audioResponse = await fetch('/read', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({ story: data.story })
-                        });
-                        const audioData = await audioResponse.json();
+                        // Stream audio using the detected language
                         const audioPlayer = document.getElementById('audioPlayer');
-                        audioPlayer.src = audioData.audio_file;
-                        audioPlayer.play();
+                        const request = new XMLHttpRequest();
+                        request.open('POST', '/stream_audio', true);
+                        request.setRequestHeader('Content-Type', 'application/json');
+                        request.responseType = 'arraybuffer';
+                        
+                        request.onload = function() {
+                            const blob = new Blob([request.response], {type: 'audio/mpeg'});
+                            const url = URL.createObjectURL(blob);
+                            audioPlayer.src = url;
+                            audioPlayer.play();
+                        };
+                        
+                        request.send(JSON.stringify({ 
+                            story: data.story,
+                            language: data.language 
+                        }));
                     }
                 } catch (error) {
                     console.error('Error loading story:', error);
@@ -224,8 +230,6 @@
             const story = document.getElementById('storyOutput').textContent;
             const language = document.getElementById('language').value;
             const audioPlayer = document.getElementById('audioPlayer');
-            audioPlayer.src = '/stream_audio';
-            audioPlayer.type = 'audio/mpeg';
             
             // Create a new request with the story content
             const request = new XMLHttpRequest();

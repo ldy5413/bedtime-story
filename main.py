@@ -95,8 +95,8 @@ def stream_audio():
     lang = 'zh-cn' if language == 'zh' else 'en'
     
     def generate():
-        # Split story into chunks for streaming
-        chunk_size = 1000
+        # Split story into smaller chunks for faster initial response
+        chunk_size = 200  # Smaller chunks for faster initial audio
         for i in range(0, len(story), chunk_size):
             chunk = story[i:i + chunk_size]
             tts = gTTS(text=chunk, lang=lang)
@@ -105,8 +105,18 @@ def stream_audio():
             fp.seek(0)
             yield fp.read()
             fp.close()
+            # Flush the buffer to ensure immediate streaming
+            if i == 0:
+                import sys
+                sys.stdout.flush()
 
-    return Response(generate(), mimetype='audio/mpeg')
+    # Set headers for immediate streaming
+    headers = {
+        'Cache-Control': 'no-cache',
+        'Content-Type': 'audio/mpeg',
+        'Transfer-Encoding': 'chunked'
+    }
+    return Response(generate(), headers=headers, mimetype='audio/mpeg')
 
 @app.route('/stories', methods=['GET'])
 def get_stories():
@@ -140,7 +150,12 @@ def get_story(story_id):
             story = cursor.fetchone()
             
             if story:
-                return jsonify({'story': story[0]})
+                # Detect the language of the story content
+                language = detect_language(story[0])
+                return jsonify({
+                    'story': story[0],
+                    'language': language
+                })
             else:
                 return jsonify({'error': 'Story not found'}), 404
     except Exception as e:

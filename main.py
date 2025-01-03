@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, jsonify, Response
 import sqlite3
 from gtts import gTTS
 from openai import OpenAI
-import os
+import os, re
 import io
 
 app = Flask(__name__)
@@ -38,7 +38,9 @@ def generate_story(theme, language='en'):
             ],
             stream=False,
         )
-        return response.choices[0].message.content
+        story = response.choices[0].message.content
+        #story = re.sub('[]()（）{}“”‘’"《》*','',story)
+        return story
     except Exception as e:
         return f"Error generating story: {str(e)}"
 
@@ -62,7 +64,7 @@ def index():
 
 def detect_language(text):
     """Detect if text contains Chinese characters"""
-    return 'zh' if any('\u4e00' <= char <= '\u9fff' for char in text) else 'en'
+    return 'zh' if any('\u4e00' <= char <= '\u9fff' for char in text[:100]) else 'en'
 
 @app.route('/generate', methods=['POST'])
 def generate():
@@ -88,36 +90,77 @@ def read():
     audio_file = generate_audio(story, language)
     return jsonify({'audio_file': audio_file})
 
+# @app.route('/stream_audio', methods=['POST'])
+# def stream_audio():
+#     story = request.json['story']
+#     language = request.json.get('language', 'en')  # Default to English
+#     lang = 'zh-cn' if language == 'zh' else 'en'
+    
+#     def generate():
+#         # Split story into smaller chunks for faster initial response
+#         chunk_size = 100  # Smaller chunks for faster initial audio
+#         for i in range(0, len(story), chunk_size):
+#             chunk = story[i:i + chunk_size]
+#             tts = gTTS(text=chunk, lang=lang)
+#             fp = io.BytesIO()
+#             tts.write_to_fp(fp)
+#             fp.seek(0)
+#             yield fp.read()
+#             fp.close()
+#             # Flush the buffer to ensure immediate streaming
+#             # if i == 0:
+#             #     import sys
+#             #     sys.stdout.flush()
+
+#     # Set headers for immediate streaming
+#     headers = {
+#         'Cache-Control': 'no-cache',
+#         'Content-Type': 'audio/mpeg',
+#         'Transfer-Encoding': 'chunked'
+#     }
+#     return Response(generate(), headers=headers, mimetype='audio/mpeg')
 @app.route('/stream_audio', methods=['POST'])
 def stream_audio():
     story = request.json['story']
+    story = re.sub('\[]\(\)\（\）\{}“”‘’"《》*','',story)
     language = request.json.get('language', 'en')  # Default to English
     lang = 'zh-cn' if language == 'zh' else 'en'
-    
-    def generate():
-        # Split story into smaller chunks for faster initial response
-        chunk_size = 200  # Smaller chunks for faster initial audio
-        for i in range(0, len(story), chunk_size):
-            chunk = story[i:i + chunk_size]
+
+    def split_into_sentences(text, max_length=200):
+        """
+        Split text into chunks based on sentence boundaries, ensuring chunks are not too large.
+        """
+        # Use regex to split by sentence boundaries
+        sentences = re.split(r'(?<=[.!?。！？])\s+', text)
+        chunks = []
+        current_chunk = ""
+
+        for sentence in sentences:
+            # Check if adding the next sentence exceeds max_length
+            if len(current_chunk) + len(sentence) + 1 <= max_length:
+                current_chunk += (" " + sentence).strip()
+            else:
+                chunks.append(current_chunk.strip())
+                current_chunk = sentence
+
+        # Add the last chunk if any
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+
+        return chunks
+
+    def generate_audio_chunks():
+        # Split story into sentence-safe chunks
+        chunks = split_into_sentences(story, max_length=200)
+        for chunk in chunks:
             tts = gTTS(text=chunk, lang=lang)
             fp = io.BytesIO()
             tts.write_to_fp(fp)
             fp.seek(0)
             yield fp.read()
             fp.close()
-            # Flush the buffer to ensure immediate streaming
-            if i == 0:
-                import sys
-                sys.stdout.flush()
 
-    # Set headers for immediate streaming
-    headers = {
-        'Cache-Control': 'no-cache',
-        'Content-Type': 'audio/mpeg',
-        'Transfer-Encoding': 'chunked'
-    }
-    return Response(generate(), headers=headers, mimetype='audio/mpeg')
-
+    return Response(generate_audio_chunks(), content_type='audio/mpeg')
 @app.route('/stories', methods=['GET'])
 def get_stories():
     try:
@@ -152,6 +195,7 @@ def get_story(story_id):
             if story:
                 # Detect the language of the story content
                 language = detect_language(story[0])
+                #formatted_content = re.sub('[]()（）{}“”‘’"《》*','',story)
                 return jsonify({
                     'story': story[0],
                     'language': language

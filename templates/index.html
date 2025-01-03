@@ -159,38 +159,63 @@
             if (e.target.classList.contains('read-story-btn')) {
                 const storyId = e.target.dataset.id;
                 try {
-                    // Fetch the full story content
                     const response = await fetch(`/stories/${storyId}`);
                     const data = await response.json();
-                    
+
                     if (data.story) {
-                        // Display the story
                         document.getElementById('storyOutput').textContent = data.story;
-                        
-                        // Stream audio using the detected language
+
+                        // Stream audio
                         const audioPlayer = document.getElementById('audioPlayer');
-                        const request = new XMLHttpRequest();
-                        request.open('POST', '/stream_audio', true);
-                        request.setRequestHeader('Content-Type', 'application/json');
-                        request.responseType = 'arraybuffer';
-                        
-                        request.onload = function() {
-                            const blob = new Blob([request.response], {type: 'audio/mpeg'});
-                            const url = URL.createObjectURL(blob);
-                            audioPlayer.src = url;
-                            audioPlayer.play();
-                        };
-                        
-                        request.send(JSON.stringify({ 
-                            story: data.story,
-                            language: data.language 
-                        }));
+                        const responseStream = await fetch('/stream_audio', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                story: data.story,
+                                language: data.language,
+                            }),
+                        });
+
+                        const reader = responseStream.body.getReader();
+                        const mediaSource = new MediaSource();
+                        audioPlayer.src = URL.createObjectURL(mediaSource);
+
+                        mediaSource.addEventListener('sourceopen', async () => {
+                            const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+                            sourceBuffer.mode = 'sequence'; // Avoid overlapping issues
+                            let done = false;
+
+                            while (!done) {
+                                const { value, done: readerDone } = await reader.read();
+                                if (value) {
+                                    if (sourceBuffer.updating) {
+                                        // Wait until the buffer is ready for new data
+                                        await new Promise(resolve => {
+                                            sourceBuffer.addEventListener('updateend', resolve, { once: true });
+                                        });
+                                    }
+                                    sourceBuffer.appendBuffer(value);
+                                }
+                                done = readerDone;
+                            }
+
+                            // End the stream once all chunks are appended
+                            sourceBuffer.addEventListener('updateend', () => {
+                                if (done) {
+                                    mediaSource.endOfStream();
+                                }
+                            });
+                        });
+
+                        audioPlayer.play();
                     }
                 } catch (error) {
                     console.error('Error loading story:', error);
                 }
             }
         });
+
+
         // Add warning modal to HTML
         const modalHTML = `
             <div id="warningModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5);">

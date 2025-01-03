@@ -122,7 +122,7 @@ def read():
 @app.route('/stream_audio', methods=['POST'])
 def stream_audio():
     story = request.json['story']
-    story = re.sub('\[]\(\)\（\）\{}“”‘’"《》*','',story)
+    story = re.sub('\[]\(\)\（\）\{}“”‘’\"\《\》*','',story)
     language = request.json.get('language', 'en')  # Default to English
     lang = 'zh-cn' if language == 'zh' else 'en'
 

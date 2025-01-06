@@ -214,6 +214,37 @@ def delete_story(story_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/play_random', methods=['GET'])
+def play_random_story():
+    try:
+        with sqlite3.connect(DATABASE) as conn:
+            cursor = conn.cursor()
+            # Get all story IDs
+            cursor.execute('SELECT id FROM stories')
+            story_ids = [row[0] for row in cursor.fetchall()]
+            
+            if not story_ids:
+                return jsonify({'error': 'No stories available'}), 404
+                
+            # Select a random story ID
+            import random
+            random_id = random.choice(story_ids)
+            
+            # Get the story content
+            cursor.execute('SELECT content FROM stories WHERE id = ?', (random_id,))
+            story_content = cursor.fetchone()[0]
+            
+            # Generate audio
+            language = detect_language(story_content)
+            audio_file = generate_audio(story_content, language)
+            
+            return jsonify({
+                'audio_file': audio_file,
+                'story_id': random_id
+            })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     init_db()
     app.run(debug=True,host='0.0.0.0')

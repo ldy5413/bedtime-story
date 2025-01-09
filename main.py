@@ -4,6 +4,7 @@ from gtts import gTTS
 from openai import OpenAI
 import os, re
 import io
+import json
 
 app = Flask(__name__)
 DATABASE = 'stories.db'
@@ -20,8 +21,8 @@ def init_db():
 # Generate story using OpenAI-compatible API
 def generate_story(theme, language='en'):
     try:
-        api_url = "https://api.deepseek.com"  # Replace with actual API base URL
-        api_key = ""       # Replace with actual API key
+        api_url = "https://api.deepseek.com"
+        api_key = ""
         client = OpenAI(api_key=api_key, base_url=api_url)
         
         system_message = "You are a creative children's story writer."
@@ -36,11 +37,9 @@ def generate_story(theme, language='en'):
                 {"role": "system", "content": system_message},
                 {"role": "user", "content": content},
             ],
-            stream=False,
+            stream=True
         )
-        story = response.choices[0].message.content
-        #story = re.sub('[]()（）{}“”‘’"《》*','',story)
-        return story
+        return response
     except Exception as e:
         return f"Error generating story: {str(e)}"
 
@@ -69,9 +68,8 @@ def detect_language(text):
 @app.route('/generate', methods=['POST'])
 def generate():
     theme = request.json['theme']
-    language = request.json.get('language', 'en')  # Default to English
+    language = request.json.get('language', 'en')
     
-    # Detect input language
     input_lang = detect_language(theme)
     if input_lang != language:
         return jsonify({
@@ -79,9 +77,31 @@ def generate():
             'story': None
         }), 400
     
-    story = generate_story(theme, language)
-    save_story(theme, story)
-    return jsonify({'story': story})
+    def generate_stream():
+        try:
+            story_chunks = generate_story(theme, language)
+            if isinstance(story_chunks, str) and story_chunks.startswith('Error'):
+                # Handle error from generate_story
+                yield f"data: {json.dumps({'error': story_chunks})}\n\n"
+                return
+                
+            full_story = ""
+            
+            for chunk in story_chunks:
+                if hasattr(chunk.choices[0].delta, 'content'):
+                    content = chunk.choices[0].delta.content
+                    if content:
+                        full_story += content
+                        yield f"data: {json.dumps({'chunk': content, 'done': False})}\n\n"
+            
+            # Save the complete story
+            save_story(theme, full_story)
+            yield f"data: {json.dumps({'chunk': '', 'done': True, 'full_story': full_story})}\n\n"
+        
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    
+    return Response(generate_stream(), mimetype='text/event-stream')
 
 @app.route('/read', methods=['POST'])
 def read():

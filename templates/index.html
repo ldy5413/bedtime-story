@@ -387,58 +387,38 @@
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
 
-                const data = await response.json();
-                
-                if (ttsService === 'f5tts') {
-                    // For F5 TTS, use the generated file URL
-                    if (data.audio_url) {
-                        audioPlayer.src = data.audio_url;
-                        await audioPlayer.play();
-                        return;
-                    }
-                } else {
-                    // For gTTS, continue with the existing streaming implementation
-                    const responseStream = await fetch('/stream_audio', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            story: story,
-                            language: language,
-                            tts_service: 'gtts'
-                        }),
-                    });
+                // Use MediaSource for both services since they're both MP3 now
+                const mediaSource = new MediaSource();
+                audioPlayer.src = URL.createObjectURL(mediaSource);
 
-                    const reader = responseStream.body.getReader();
-                    const mediaSource = new MediaSource();
-                    audioPlayer.src = URL.createObjectURL(mediaSource);
+                mediaSource.addEventListener('sourceopen', async () => {
+                    const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+                    sourceBuffer.mode = 'sequence';
 
-                    mediaSource.addEventListener('sourceopen', async () => {
-                        const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
-                        sourceBuffer.mode = 'sequence';
-                        
-                        let done = false;
-                        while (!done) {
-                            const { value, done: readerDone } = await reader.read();
-                            if (value) {
-                                if (sourceBuffer.updating) {
-                                    await new Promise(resolve => {
-                                        sourceBuffer.addEventListener('updateend', resolve, { once: true });
-                                    });
-                                }
-                                sourceBuffer.appendBuffer(value);
+                    const reader = response.body.getReader();
+                    let done = false;
+
+                    while (!done) {
+                        const { value, done: readerDone } = await reader.read();
+                        if (value) {
+                            if (sourceBuffer.updating) {
+                                await new Promise(resolve => {
+                                    sourceBuffer.addEventListener('updateend', resolve, { once: true });
+                                });
                             }
-                            done = readerDone;
+                            sourceBuffer.appendBuffer(value);
                         }
+                        done = readerDone;
+                    }
 
-                        sourceBuffer.addEventListener('updateend', () => {
-                            if (done && !sourceBuffer.updating) {
-                                mediaSource.endOfStream();
-                            }
-                        });
+                    sourceBuffer.addEventListener('updateend', () => {
+                        if (done && !sourceBuffer.updating) {
+                            mediaSource.endOfStream();
+                        }
                     });
+                });
 
-                    await audioPlayer.play();
-                }
+                await audioPlayer.play();
             } catch (error) {
                 console.error('Error streaming audio:', error);
             }

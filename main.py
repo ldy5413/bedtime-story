@@ -215,44 +215,75 @@ def stream_gtts_audio(story, language):
 
     return Response(generate_audio_chunks(), content_type='audio/mpeg')
 
+def split_text_into_chunks(text, max_length=100):
+    """Split text into chunks, trying to break at sentence boundaries."""
+    # For Chinese text, split by punctuation
+    if any('\u4e00' <= char <= '\u9fff' for char in text):
+        pattern = r'[。！？.!?]+'
+    else:
+        pattern = r'[.!?]+'
+    
+    sentences = re.split(pattern, text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+    
+    chunks = []
+    current_chunk = ""
+    
+    for sentence in sentences:
+        if len(current_chunk) + len(sentence) <= max_length:
+            current_chunk += sentence + ". "
+        else:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+            current_chunk = sentence + ". "
+    
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+    
+    return chunks
+
 def stream_f5tts_audio(story, language, voice_profile):
     try:
         if voice_profile:
             ref_audio = voice_profile.get('ref_audio')
             ref_text = voice_profile.get('ref_text')
         else:
-            # Use default profile based on language
             profiles = scan_voice_profiles()
             if profiles[language] and profiles[language][0]:
                 ref_audio = profiles[language][0]['ref_audio']
                 ref_text = profiles[language][0]['ref_text']
             else:
                 return jsonify({'error': f'No voice profile available for language {language}'}), 400
+
+        # Split story into chunks
+        story_chunks = split_text_into_chunks(story)
         
-        # Make request to generate and save the audio file
-        response = requests.post(
-            'http://localhost:8000/tts',
-            json={
-                'text_to_generate': story,
-                'ref_audio': ref_audio,
-                'ref_text': ref_text,
-                'remove_silence': True,
-                'cross_fade_duration': 0.15,
-                'nfe_step': 32,
-                'speed': 1.0,
-                'response_type': 'file'
-            }
-        )
+        def generate():
+            for chunk in story_chunks:
+                # Generate audio for each chunk
+                response = requests.post(
+                    'http://localhost:8000/tts',
+                    json={
+                        'text_to_generate': chunk,
+                        'ref_audio': ref_audio,
+                        'ref_text': ref_text,
+                        'remove_silence': True,
+                        'cross_fade_duration': 0.15,
+                        'nfe_step': 32,
+                        'speed': 1.0,
+                        'response_type': 'stream'
+                    }
+                )
+                
+                if response.status_code != 200:
+                    raise Exception('F5 TTS API error')
+                
+                # Stream each chunk's audio data
+                for audio_chunk in response.iter_content(chunk_size=8192):
+                    if audio_chunk:
+                        yield audio_chunk
 
-        if response.status_code != 200:
-            return jsonify({'error': 'F5 TTS API error'}), response.status_code
-
-        # Return the URL to the generated audio file
-        return jsonify({
-            'audio_url': '/static/story.wav',
-            'type': 'wav'
-        })
-
+        return Response(generate(), mimetype='audio/mpeg')
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -290,7 +321,7 @@ def get_story(story_id):
             if story:
                 # Detect the language of the story content
                 language = detect_language(story[0])
-                #formatted_content = re.sub('[]()（）{}“”‘’"《》*','',story)
+                #formatted_content = re.sub('[]()（）{}""''"《》*','',story)
                 return jsonify({
                     'story': story[0],
                     'language': language

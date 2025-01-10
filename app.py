@@ -63,7 +63,6 @@ class TTSRequest(BaseModel):
 async def text_to_speech(request: TTSRequest):
     try:
         logger.info(f"Processing request with text: {request.text_to_generate}")
-        logger.info(f"Using reference audio: {request.ref_audio}")
         
         # Process reference audio and text
         try:
@@ -71,12 +70,11 @@ async def text_to_speech(request: TTSRequest):
                 request.ref_audio, 
                 request.ref_text
             )
-            logger.info(f"Reference text processed: {ref_text}")
         except Exception as e:
             logger.error(f"Error in preprocessing: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Preprocessing error: {str(e)}")
 
-        # Generate speech using infer_process
+        # Generate speech
         try:
             final_wave, final_sample_rate, _ = infer_process(
                 ref_audio=ref_audio,
@@ -88,34 +86,37 @@ async def text_to_speech(request: TTSRequest):
                 nfe_step=request.nfe_step,
                 speed=request.speed
             )
-            logger.info("Speech generated successfully")
         except Exception as e:
             logger.error(f"Error in speech generation: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Generation error: {str(e)}")
 
         try:
+            # Stream the audio
+            audio_buffer = io.BytesIO()
+            sf.write(audio_buffer, final_wave, final_sample_rate, format='mp3')
+            audio_buffer.seek(0)
+            
             if request.response_type == "file":
-                # Always save as story.wav
-                temp_file = AUDIO_DIR / "story.wav"
-                sf.write(temp_file, final_wave, final_sample_rate)
-                
+                # Save as file
+                temp_file = AUDIO_DIR / "story.mp3"
+                sf.write(temp_file, final_wave, final_sample_rate, format='mp3')
                 return FileResponse(
                     temp_file,
-                    media_type="audio/wav",
-                    filename="story.wav"
+                    media_type="audio/mpeg",
+                    filename="story.mp3"
                 )
             else:
                 # Stream the audio
-                audio_buffer = io.BytesIO()
-                sf.write(audio_buffer, final_wave, final_sample_rate, format='wav')
-                audio_buffer.seek(0)
-                
                 def iterfile():
-                    yield from audio_buffer
+                    while True:
+                        chunk = audio_buffer.read(8192)
+                        if not chunk:
+                            break
+                        yield chunk
                 
                 return StreamingResponse(
                     iterfile(),
-                    media_type="audio/wav"
+                    media_type="audio/mpeg"
                 )
             
         except Exception as e:

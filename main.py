@@ -5,6 +5,9 @@ from openai import OpenAI
 import os, re
 import io
 import json
+import requests
+from pathlib import Path
+import mimetypes
 
 app = Flask(__name__)
 DATABASE = 'stories.db'
@@ -56,6 +59,51 @@ def generate_audio(content, language='en'):
     audio_file = 'static/story.mp3'
     tts.save(audio_file)
     return f'/static/story.mp3'
+
+# Add TTS service configuration
+TTS_SERVICES = {
+    'gtts': 'Google Text-to-Speech',
+    'f5tts': 'F5 Text-to-Speech'
+}
+
+# Load voice profiles
+def load_voice_profiles():
+    profile_path = Path('voice_profiles/profiles.json')
+    if profile_path.exists():
+        with open(profile_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    return {'zh': [], 'en': []}
+
+# Add this function to scan voice profiles
+def scan_voice_profiles():
+    profiles_dir = Path('voice_profiles')
+    if not profiles_dir.exists():
+        return {'zh': [], 'en': []}
+    
+    profiles = {'zh': [], 'en': []}
+    
+    # Get all audio files
+    audio_files = [f for f in profiles_dir.glob('*') if f.suffix.lower() in ['.wav', '.mp3', '.m4a']]
+    
+    for audio_file in audio_files:
+        base_name = audio_file.stem
+        text_file = profiles_dir / f"{base_name}.txt"
+        
+        if text_file.exists():
+            with open(text_file, 'r', encoding='utf-8') as f:
+                ref_text = f.read().strip()
+            
+            # Detect language from the reference text
+            lang = 'zh' if any('\u4e00' <= char <= '\u9fff' for char in ref_text) else 'en'
+            
+            profiles[lang].append({
+                'id': base_name,
+                'name': base_name.replace('_', ' ').title(),
+                'ref_audio': str(audio_file),
+                'ref_text': ref_text
+            })
+    
+    return profiles
 
 @app.route('/')
 def index():
@@ -110,67 +158,52 @@ def read():
     audio_file = generate_audio(story, language)
     return jsonify({'audio_file': audio_file})
 
-# @app.route('/stream_audio', methods=['POST'])
-# def stream_audio():
-#     story = request.json['story']
-#     language = request.json.get('language', 'en')  # Default to English
-#     lang = 'zh-cn' if language == 'zh' else 'en'
-    
-#     def generate():
-#         # Split story into smaller chunks for faster initial response
-#         chunk_size = 100  # Smaller chunks for faster initial audio
-#         for i in range(0, len(story), chunk_size):
-#             chunk = story[i:i + chunk_size]
-#             tts = gTTS(text=chunk, lang=lang)
-#             fp = io.BytesIO()
-#             tts.write_to_fp(fp)
-#             fp.seek(0)
-#             yield fp.read()
-#             fp.close()
-#             # Flush the buffer to ensure immediate streaming
-#             # if i == 0:
-#             #     import sys
-#             #     sys.stdout.flush()
+# Add new route to get available TTS services and voice profiles
+@app.route('/tts-options', methods=['GET'])
+def get_tts_options():
+    profiles = scan_voice_profiles()
+    return jsonify({
+        'services': TTS_SERVICES,
+        'voices': profiles
+    })
 
-#     # Set headers for immediate streaming
-#     headers = {
-#         'Cache-Control': 'no-cache',
-#         'Content-Type': 'audio/mpeg',
-#         'Transfer-Encoding': 'chunked'
-#     }
-#     return Response(generate(), headers=headers, mimetype='audio/mpeg')
+# Modify the stream_audio route to handle different TTS services
 @app.route('/stream_audio', methods=['POST'])
 def stream_audio():
     story = request.json['story']
-    story = re.sub('\[]\(\)\（\）\{}“”‘’\"\《\》*','',story)
-    language = request.json.get('language', 'en')  # Default to English
+    story = re.sub('\[]\(\)\（\）\{}""''\"\《\》*','',story)
+    language = request.json.get('language', 'en')
+    tts_service = request.json.get('tts_service', 'gtts')
+    voice_profile = request.json.get('voice_profile', None)
+
+    if tts_service == 'gtts':
+        return stream_gtts_audio(story, language)
+    elif tts_service == 'f5tts':
+        return stream_f5tts_audio(story, language, voice_profile)
+    else:
+        return jsonify({'error': 'Invalid TTS service'}), 400
+
+def stream_gtts_audio(story, language):
     lang = 'zh-cn' if language == 'zh' else 'en'
 
     def split_into_sentences(text, max_length=200):
-        """
-        Split text into chunks based on sentence boundaries, ensuring chunks are not too large.
-        """
-        # Use regex to split by sentence boundaries
         sentences = re.split(r'(?<=[.!?。！？])\s+', text)
         chunks = []
         current_chunk = ""
 
         for sentence in sentences:
-            # Check if adding the next sentence exceeds max_length
             if len(current_chunk) + len(sentence) + 1 <= max_length:
                 current_chunk += (" " + sentence).strip()
             else:
                 chunks.append(current_chunk.strip())
                 current_chunk = sentence
 
-        # Add the last chunk if any
         if current_chunk:
             chunks.append(current_chunk.strip())
 
         return chunks
 
     def generate_audio_chunks():
-        # Split story into sentence-safe chunks
         chunks = split_into_sentences(story, max_length=200)
         for chunk in chunks:
             tts = gTTS(text=chunk, lang=lang)
@@ -181,6 +214,48 @@ def stream_audio():
             fp.close()
 
     return Response(generate_audio_chunks(), content_type='audio/mpeg')
+
+def stream_f5tts_audio(story, language, voice_profile):
+    try:
+        if voice_profile:
+            ref_audio = voice_profile.get('ref_audio')
+            ref_text = voice_profile.get('ref_text')
+        else:
+            # Use default profile based on language
+            profiles = scan_voice_profiles()
+            if profiles[language] and profiles[language][0]:
+                ref_audio = profiles[language][0]['ref_audio']
+                ref_text = profiles[language][0]['ref_text']
+            else:
+                return jsonify({'error': f'No voice profile available for language {language}'}), 400
+        
+        # Make request to generate and save the audio file
+        response = requests.post(
+            'http://localhost:8000/tts',
+            json={
+                'text_to_generate': story,
+                'ref_audio': ref_audio,
+                'ref_text': ref_text,
+                'remove_silence': True,
+                'cross_fade_duration': 0.15,
+                'nfe_step': 32,
+                'speed': 1.0,
+                'response_type': 'file'
+            }
+        )
+
+        if response.status_code != 200:
+            return jsonify({'error': 'F5 TTS API error'}), response.status_code
+
+        # Return the URL to the generated audio file
+        return jsonify({
+            'audio_url': '/static/story.wav',
+            'type': 'wav'
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/stories', methods=['GET'])
 def get_stories():
     try:

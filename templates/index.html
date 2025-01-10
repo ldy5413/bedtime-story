@@ -92,9 +92,20 @@
         <div class="controls">
             <div class="language-select">
                 <label for="language">Language:</label>
-                <select id="language">
+                <select id="language" onchange="updateVoiceOptions()">
                     <option value="en">English</option>
                     <option value="zh">中文 (Chinese)</option>
+                </select>
+                
+                <label for="tts-service">TTS Service:</label>
+                <select id="tts-service" onchange="updateVoiceOptions()">
+                    <option value="gtts">Google TTS</option>
+                    <option value="f5tts">F5 TTS</option>
+                </select>
+                
+                <label for="voice-profile">Voice:</label>
+                <select id="voice-profile">
+                    <option value="">Default</option>
                 </select>
             </div>
             <textarea id="theme" placeholder="Enter story themes or topics (separated by commas)..." required></textarea>
@@ -114,6 +125,47 @@
     </div>
 
     <script>
+        let voiceProfiles = {};
+
+        async function loadTTSOptions() {
+            try {
+                const response = await fetch('/tts-options');
+                const data = await response.json();
+                voiceProfiles = data.voices;
+                updateVoiceOptions();
+            } catch (error) {
+                console.error('Error loading TTS options:', error);
+            }
+        }
+
+        function updateVoiceOptions() {
+            const language = document.getElementById('language').value;
+            const ttsService = document.getElementById('tts-service').value;
+            const voiceSelect = document.getElementById('voice-profile');
+            
+            // Clear existing options
+            voiceSelect.innerHTML = '<option value="">Default</option>';
+            
+            // Only show voice profiles for F5 TTS
+            if (ttsService === 'f5tts' && voiceProfiles[language]) {
+                voiceProfiles[language].forEach(profile => {
+                    const option = document.createElement('option');
+                    option.value = JSON.stringify(profile);
+                    option.textContent = profile.name;
+                    voiceSelect.appendChild(option);
+                });
+                voiceSelect.style.display = 'inline';
+            } else {
+                voiceSelect.style.display = 'none';
+            }
+        }
+
+        // Load TTS options when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            loadTTSOptions();
+            loadStories();
+        });
+
         // Function to load and display stories
         async function loadStories() {
             try {
@@ -155,9 +207,6 @@
                 console.error('Error loading stories:', error);
             }
         }
-
-        // Load stories when page loads
-        document.addEventListener('DOMContentLoaded', loadStories);
 
         // Handle click on read story buttons
         document.addEventListener('click', async (e) => {
@@ -315,58 +364,92 @@
         // Add event listener for generate button
         document.getElementById('generateBtn').addEventListener('click', generateStory);
 
-        document.getElementById('readBtn').addEventListener('click', async () => {
-            const story = document.getElementById('storyOutput').textContent;
-            const language = document.getElementById('language').value;
+        async function streamAudio(story, language) {
+            const ttsService = document.getElementById('tts-service').value;
+            const voiceProfileSelect = document.getElementById('voice-profile');
+            const voiceProfile = voiceProfileSelect.value ? JSON.parse(voiceProfileSelect.value) : null;
+            
             const audioPlayer = document.getElementById('audioPlayer');
             
             try {
-                // Stream audio
-                const responseStream = await fetch('/stream_audio', {
+                const response = await fetch('/stream_audio', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         story: story,
                         language: language,
+                        tts_service: ttsService,
+                        voice_profile: voiceProfile
                     }),
                 });
 
-                const reader = responseStream.body.getReader();
-                const mediaSource = new MediaSource();
-                audioPlayer.src = URL.createObjectURL(mediaSource);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
 
-                mediaSource.addEventListener('sourceopen', async () => {
-                    const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
-                    sourceBuffer.mode = 'sequence'; // Avoid overlapping issues
-                    let done = false;
-
-                    while (!done) {
-                        const { value, done: readerDone } = await reader.read();
-                        if (value) {
-                            if (sourceBuffer.updating) {
-                                // Wait until the buffer is ready for new data
-                                await new Promise(resolve => {
-                                    sourceBuffer.addEventListener('updateend', resolve, { once: true });
-                                });
-                            }
-                            sourceBuffer.appendBuffer(value);
-                        }
-                        done = readerDone;
+                const data = await response.json();
+                
+                if (ttsService === 'f5tts') {
+                    // For F5 TTS, use the generated file URL
+                    if (data.audio_url) {
+                        audioPlayer.src = data.audio_url;
+                        await audioPlayer.play();
+                        return;
                     }
-
-                    // End the stream once all chunks are appended
-                    sourceBuffer.addEventListener('updateend', () => {
-                        if (done) {
-                            mediaSource.endOfStream();
-                        }
+                } else {
+                    // For gTTS, continue with the existing streaming implementation
+                    const responseStream = await fetch('/stream_audio', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            story: story,
+                            language: language,
+                            tts_service: 'gtts'
+                        }),
                     });
-                });
 
-                audioPlayer.play();
+                    const reader = responseStream.body.getReader();
+                    const mediaSource = new MediaSource();
+                    audioPlayer.src = URL.createObjectURL(mediaSource);
+
+                    mediaSource.addEventListener('sourceopen', async () => {
+                        const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+                        sourceBuffer.mode = 'sequence';
+                        
+                        let done = false;
+                        while (!done) {
+                            const { value, done: readerDone } = await reader.read();
+                            if (value) {
+                                if (sourceBuffer.updating) {
+                                    await new Promise(resolve => {
+                                        sourceBuffer.addEventListener('updateend', resolve, { once: true });
+                                    });
+                                }
+                                sourceBuffer.appendBuffer(value);
+                            }
+                            done = readerDone;
+                        }
+
+                        sourceBuffer.addEventListener('updateend', () => {
+                            if (done && !sourceBuffer.updating) {
+                                mediaSource.endOfStream();
+                            }
+                        });
+                    });
+
+                    await audioPlayer.play();
+                }
             } catch (error) {
                 console.error('Error streaming audio:', error);
             }
+        }
+
+        document.getElementById('readBtn').addEventListener('click', async () => {
+            const story = document.getElementById('storyOutput').textContent;
+            const language = document.getElementById('language').value;
+            await streamAudio(story, language);
         });
     </script>
 </body>
 </html>
+

@@ -1,0 +1,20 @@
+{
+    "zh": [
+        {
+            "id": "basic_zh",
+            "name": "Basic Chinese Female",
+            "ref_audio": "basic_ref_zh.wav",
+            "ref_text": "对,这就是我万人敬仰的太乙真人.",
+            "description": "Standard female Chinese voice"
+        }
+    ],
+    "en": [
+        {
+            "id": "basic_en",
+            "name": "Basic English Female",
+            "ref_audio": "basic_ref_en.wav",
+            "ref_text": "Hello, I am your storytelling companion.",
+            "description": "Standard female English voice"
+        }
+    ]
+} 

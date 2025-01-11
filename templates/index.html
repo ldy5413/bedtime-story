@@ -130,6 +130,28 @@
             font-size: 0.9em;
         }
 
+        .favorite-btn {
+            background: none;
+            border: none;
+            color: #666;
+            font-size: 1.5em;
+            padding: 0;
+            margin: 0;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+
+        .favorite-btn.favorited {
+            color: #f1c40f;
+        }
+
+        .story-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
         .pagination-controls {
             display: flex;
             justify-content: center;
@@ -276,7 +298,12 @@
                         const storyCard = document.createElement('div');
                         storyCard.className = 'story-card';
                         storyCard.innerHTML = `
-                            <h3>${story.theme}</h3>
+                            <div class="story-card-header">
+                                <h3>${story.theme}</h3>
+                                <button class="favorite-btn ${story.favorite ? 'favorited' : ''}" data-id="${story.id}">
+                                    ${story.favorite ? '★' : '☆'}
+                                </button>
+                            </div>
                             <p class="story-preview">${story.preview}...</p>
                             <div class="story-actions">
                                 <button class="read-story-btn" data-id="${story.id}">Read</button>
@@ -360,6 +387,27 @@
                         } catch (error) {
                             console.error('Error deleting story:', error);
                         }
+                    }
+                });
+            });
+
+            // Add event listeners for favorite buttons
+            document.querySelectorAll('.favorite-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const storyId = btn.dataset.id;
+                    const isFavorited = btn.classList.contains('favorited');
+                    try {
+                        const response = await fetch(`/stories/${storyId}/favorite`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ favorite: !isFavorited })
+                        });
+                        if (response.ok) {
+                            btn.classList.toggle('favorited');
+                            btn.textContent = btn.classList.contains('favorited') ? '★' : '☆';
+                        }
+                    } catch (error) {
+                        console.error('Error updating favorite status:', error);
                     }
                 });
             });

@@ -15,11 +15,16 @@ DATABASE = 'stories.db'
 # Initialize database
 def init_db():
     with sqlite3.connect(DATABASE) as conn:
-        conn.execute('''CREATE TABLE IF NOT EXISTS stories
-                        (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                         theme TEXT,
-                         content TEXT,
-                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS stories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                theme TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                favorite BOOLEAN DEFAULT FALSE,
+                user_id TEXT DEFAULT 'valley'
+            )
+        ''')
 
 # Generate story using OpenAI-compatible API
 def generate_story(theme, language='en'):
@@ -49,8 +54,10 @@ def generate_story(theme, language='en'):
 # Save story to database
 def save_story(theme, content):
     with sqlite3.connect(DATABASE) as conn:
-        conn.execute('INSERT INTO stories (theme, content) VALUES (?, ?)',
-                    (theme, content))
+        conn.execute('''
+            INSERT INTO stories (theme, content, user_id) 
+            VALUES (?, ?, 'valley')
+        ''', (theme, content))
 
 # Generate TTS audio
 def generate_audio(content, language='en'):
@@ -292,22 +299,30 @@ def get_stories():
     try:
         with sqlite3.connect(DATABASE) as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT id, theme, content FROM stories ORDER BY created_at DESC')
+            print("Fetching stories for user 'valley'...")  # Debug log
+            cursor.execute('''
+                SELECT id, theme, content, favorite 
+                FROM stories 
+                WHERE user_id = 'valley' 
+                ORDER BY created_at DESC
+            ''')
             stories = cursor.fetchall()
+            print(f"Found {len(stories)} stories")  # Debug log
             
             formatted_stories = []
             for story in stories:
-                story_id, theme, content = story
-                # For Chinese, take first 100 characters; for others, first 50 words
+                story_id, theme, content, favorite = story
                 preview = content[:100] if any('\u4e00' <= char <= '\u9fff' for char in content) else ' '.join(content.split()[:50])
                 formatted_stories.append({
                     'id': story_id,
                     'theme': theme,
-                    'preview': preview
+                    'preview': preview,
+                    'favorite': bool(favorite)
                 })
             
             return jsonify({'stories': formatted_stories})
     except Exception as e:
+        print(f"Error in get_stories: {str(e)}")  # Debug log
         return jsonify({'error': str(e)}), 500
 
 @app.route('/stories/<int:story_id>', methods=['GET'])
@@ -315,13 +330,15 @@ def get_story(story_id):
     try:
         with sqlite3.connect(DATABASE) as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT content FROM stories WHERE id = ?', (story_id,))
+            cursor.execute('''
+                SELECT content 
+                FROM stories 
+                WHERE id = ? AND user_id = 'valley'
+            ''', (story_id,))
             story = cursor.fetchone()
             
             if story:
-                # Detect the language of the story content
                 language = detect_language(story[0])
-                #formatted_content = re.sub('[]()（）{}""''"《》*','',story)
                 return jsonify({
                     'story': story[0],
                     'language': language
@@ -335,7 +352,10 @@ def get_story(story_id):
 def delete_story(story_id):
     try:
         with sqlite3.connect(DATABASE) as conn:
-            conn.execute('DELETE FROM stories WHERE id = ?', (story_id,))
+            conn.execute('''
+                DELETE FROM stories 
+                WHERE id = ? AND user_id = 'valley'
+            ''', (story_id,))
             return jsonify({'message': 'Story deleted successfully'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -371,6 +391,59 @@ def play_random_story():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/stories/<int:story_id>/favorite', methods=['POST'])
+def toggle_favorite(story_id):
+    try:
+        data = request.json
+        favorite = data.get('favorite', False)
+        
+        with sqlite3.connect(DATABASE) as conn:
+            conn.execute('''
+                UPDATE stories 
+                SET favorite = ? 
+                WHERE id = ? AND user_id = 'valley'
+            ''', (favorite, story_id))
+            return jsonify({'message': 'Favorite status updated successfully'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+def migrate_existing_stories():
+    try:
+        with sqlite3.connect(DATABASE) as conn:
+            # Check existing columns
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(stories)")
+            columns = [column[1] for column in cursor.fetchall()]
+            
+            # Add missing columns
+            if 'user_id' not in columns:
+                print("Adding user_id column...")
+                conn.execute('''
+                    ALTER TABLE stories 
+                    ADD COLUMN user_id TEXT DEFAULT 'valley'
+                ''')
+                conn.execute('''
+                    UPDATE stories 
+                    SET user_id = 'valley' 
+                    WHERE user_id IS NULL
+                ''')
+
+            if 'favorite' not in columns:
+                print("Adding favorite column...")
+                conn.execute('''
+                    ALTER TABLE stories 
+                    ADD COLUMN favorite BOOLEAN DEFAULT FALSE
+                ''')
+                conn.execute('''
+                    UPDATE stories 
+                    SET favorite = FALSE 
+                    WHERE favorite IS NULL
+                ''')
+    except Exception as e:
+        print(f"Migration error: {str(e)}")
+
+# Call migration when initializing the app
 if __name__ == '__main__':
     init_db()
+    migrate_existing_stories()
     app.run(debug=True,host='0.0.0.0')

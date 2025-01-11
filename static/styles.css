@@ -1,0 +1,176 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f5f5f5;
+}
+
+.container {
+    display: flex;
+    gap: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.left-panel, .right-panel {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.left-panel {
+    flex: 3;
+    min-width: 600px;
+}
+
+.right-panel {
+    flex: 2;
+    min-width: 400px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+h1 {
+    color: #2c3e50;
+    margin-bottom: 20px;
+}
+
+.input-group {
+    margin-bottom: 15px;
+}
+
+label {
+    display: block;
+    margin-bottom: 5px;
+    color: #34495e;
+    font-weight: bold;
+}
+
+input[type="text"], select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+button {
+    background-color: #3498db;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    margin-right: 10px;
+}
+
+button:hover {
+    background-color: #2980b9;
+}
+
+button:disabled {
+    background-color: #bdc3c7;
+    cursor: not-allowed;
+}
+
+#storyOutput {
+    margin: 20px 0;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    min-height: 200px;
+    background-color: #fff;
+    white-space: pre-wrap;
+}
+
+#audioPlayer {
+    width: 100%;
+    margin: 20px 0;
+}
+
+.story-card {
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 15px;
+    background-color: white;
+    transition: transform 0.2s;
+}
+
+.story-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.story-card h3 {
+    margin: 0 0 10px 0;
+    color: #2c3e50;
+}
+
+.story-preview {
+    color: #666;
+    margin-bottom: 10px;
+    line-height: 1.5;
+}
+
+.story-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.story-actions button {
+    padding: 5px 15px;
+    font-size: 0.9em;
+}
+
+.favorite-btn {
+    background: none;
+    border: none;
+    color: #666;
+    font-size: 1.5em;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    transition: color 0.3s;
+}
+
+.favorite-btn.favorited {
+    color: #f1c40f;
+}
+
+.story-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.pagination-controls {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 20px;
+    padding: 10px;
+}
+
+.pagination-controls button {
+    padding: 5px 10px;
+    border: 1px solid #ddd;
+    background: white;
+    cursor: pointer;
+    border-radius: 4px;
+    color: black;
+}
+
+.pagination-controls button.current-page {
+    background: #3498db;
+    color: white;
+    border-color: #3498db;
+}
+
+.pagination-controls button:hover:not(.current-page):not(:disabled) {
+    background: #f5f5f5;
+    color: black;
+}

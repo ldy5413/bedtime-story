@@ -25,6 +25,19 @@ def init_db():
                 user_id TEXT DEFAULT 'valley'
             )
         ''')
+        
+        # Create a new table for cached audio
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS audio_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                story_id INTEGER,
+                chunk_text TEXT NOT NULL,
+                audio_data BLOB NOT NULL,
+                voice_profile TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (story_id) REFERENCES stories(id) ON DELETE CASCADE
+            )
+        ''')
 
 # Generate story using OpenAI-compatible API
 def generate_story(theme, language='en'):
@@ -254,11 +267,13 @@ def stream_f5tts_audio(story, language, voice_profile):
         if voice_profile:
             ref_audio = voice_profile.get('ref_audio')
             ref_text = voice_profile.get('ref_text')
+            voice_name = voice_profile.get('name', 'default')
         else:
             profiles = scan_voice_profiles()
             if profiles[language] and profiles[language][0]:
                 ref_audio = profiles[language][0]['ref_audio']
                 ref_text = profiles[language][0]['ref_text']
+                voice_name = profiles[language][0].get('name', 'default')
             else:
                 return jsonify({'error': f'No voice profile available for language {language}'}), 400
 
@@ -266,32 +281,53 @@ def stream_f5tts_audio(story, language, voice_profile):
         story_chunks = split_text_into_chunks(story)
         
         def generate():
-            for chunk in story_chunks:
-                # Generate audio for each chunk
-                response = requests.post(
-                    'http://localhost:8000/tts',
-                    json={
-                        'text_to_generate': chunk,
-                        'ref_audio': ref_audio,
-                        'ref_text': ref_text,
-                        'remove_silence': True,
-                        'cross_fade_duration': 0.15,
-                        'nfe_step': 32,
-                        'speed': 1.0,
-                        'response_type': 'stream'
-                    }
-                )
-                
-                if response.status_code != 200:
-                    raise Exception('F5 TTS API error')
-                
-                # Stream each chunk's audio data
-                for audio_chunk in response.iter_content(chunk_size=8192):
-                    if audio_chunk:
-                        yield audio_chunk
+            with sqlite3.connect(DATABASE) as conn:
+                for chunk in story_chunks:
+                    # Check if we have this chunk cached
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        SELECT audio_data FROM audio_cache 
+                        WHERE chunk_text = ? AND voice_profile = ?
+                    ''', (chunk, voice_name))
+                    cached_audio = cursor.fetchone()
+
+                    if cached_audio:
+                        # Use cached audio
+                        yield cached_audio[0]
+                    else:
+                        # Generate new audio
+                        response = requests.post(
+                            'http://localhost:8000/tts',
+                            json={
+                                'text_to_generate': chunk,
+                                'ref_audio': ref_audio,
+                                'ref_text': ref_text,
+                                'remove_silence': True,
+                                'cross_fade_duration': 0.15,
+                                'nfe_step': 32,
+                                'speed': 1.0,
+                                'response_type': 'stream'
+                            }
+                        )
+                        
+                        if response.status_code != 200:
+                            raise Exception('F5 TTS API error')
+                        
+                        # Get the complete audio data
+                        audio_data = response.content
+                        
+                        # Cache the audio data
+                        cursor.execute('''
+                            INSERT INTO audio_cache (chunk_text, audio_data, voice_profile)
+                            VALUES (?, ?, ?)
+                        ''', (chunk, audio_data, voice_name))
+                        conn.commit()
+                        
+                        yield audio_data
 
         return Response(generate(), mimetype='audio/mpeg')
     except Exception as e:
+        print(f"Error in stream_f5tts_audio: {str(e)}")  # Debug log
         return jsonify({'error': str(e)}), 500
 
 @app.route('/stories', methods=['GET'])
@@ -439,11 +475,36 @@ def migrate_existing_stories():
                     SET favorite = FALSE 
                     WHERE favorite IS NULL
                 ''')
+
+            # Add audio cache table if it doesn't exist
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS audio_cache (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    story_id INTEGER,
+                    chunk_text TEXT NOT NULL,
+                    audio_data BLOB NOT NULL,
+                    voice_profile TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (story_id) REFERENCES stories(id) ON DELETE CASCADE
+                )
+            ''')
     except Exception as e:
         print(f"Migration error: {str(e)}")
+
+def cleanup_old_audio_cache(days=30):
+    """Remove audio cache entries older than specified days"""
+    try:
+        with sqlite3.connect(DATABASE) as conn:
+            conn.execute('''
+                DELETE FROM audio_cache 
+                WHERE created_at < datetime('now', '-? days')
+            ''', (days,))
+    except Exception as e:
+        print(f"Error cleaning up audio cache: {str(e)}")
 
 # Call migration when initializing the app
 if __name__ == '__main__':
     init_db()
     migrate_existing_stories()
+    #cleanup_old_audio_cache(30)  # Clean up audio older than 30 days
     app.run(debug=True,host='0.0.0.0')

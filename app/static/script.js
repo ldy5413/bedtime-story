@@ -274,26 +274,47 @@ async function generateStory() {
     storyOutput.textContent = 'Generating story...';
 
     try {
-        const response = await fetch('/read', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                story: theme,
-                language: language
-            })
-        });
+        // Create EventSource for server-sent events
+        const eventSource = new EventSource(`/generate?theme=${encodeURIComponent(theme)}&language=${encodeURIComponent(language)}`);
+        let story = '';
 
-        const data = await response.json();
-        if (data.error) {
-            throw new Error(data.error);
-        }
+        eventSource.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                if (data.chunk) {
+                    story += data.chunk;
+                    storyOutput.textContent = story;
+                }
+                
+                if (data.done) {
+                    eventSource.close();
+                    readBtn.disabled = false;
+                    generateBtn.disabled = false;
+                    generateBtn.textContent = 'Generate Story';
+                }
+            } catch (e) {
+                console.error('Error parsing SSE data:', e);
+                eventSource.close();
+                throw e;
+            }
+        };
 
-        storyOutput.textContent = data.story;
-        readBtn.disabled = false;  // Enable read button
+        eventSource.onerror = function(error) {
+            console.error('EventSource error:', error);
+            eventSource.close();
+            storyOutput.textContent = 'Error generating story. Please try again.';
+            generateBtn.disabled = false;
+            generateBtn.textContent = 'Generate Story';
+        };
+
     } catch (error) {
         console.error('Error:', error);
         storyOutput.textContent = 'Error generating story. Please try again.';
-    } finally {
         generateBtn.disabled = false;
         generateBtn.textContent = 'Generate Story';
     }

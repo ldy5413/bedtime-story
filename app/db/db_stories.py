@@ -6,10 +6,10 @@ import sqlite3
 db_bp = Blueprint('database', __name__)
 @db_bp.route('/stories', methods=['GET'])
 def get_stories():
+    current_app.logger.info("Fetching stories...")
     try:
         with sqlite3.connect(current_app.config['DATABASE']) as conn:
             cursor = conn.cursor()
-            print("Fetching stories for user 'valley'...")  # Debug log
             cursor.execute('''
                 SELECT id, theme, content, favorite 
                 FROM stories 
@@ -17,7 +17,7 @@ def get_stories():
                 ORDER BY created_at DESC
             ''')
             stories = cursor.fetchall()
-            print(f"Found {len(stories)} stories")  # Debug log
+            current_app.logger.info(f"Found {len(stories)} stories")
             
             formatted_stories = []
             for story in stories:
@@ -32,8 +32,8 @@ def get_stories():
             
             return jsonify({'stories': formatted_stories})
     except Exception as e:
-        print(f"Error in get_stories: {str(e)}")  # Debug log
-        return jsonify({'error': str(e)}), 500
+        current_app.logger.error(f"Error in get_stories: {str(e)}")
+        return jsonify({'error': 'Failed to fetch stories'}), 500
     
 @db_bp.route('/stories/<int:story_id>', methods=['GET'])
 def get_story(story_id):

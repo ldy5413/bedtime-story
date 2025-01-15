@@ -35,3 +35,17 @@ def init_db(DATABASE):
                 FOREIGN KEY (story_id) REFERENCES stories(id) ON DELETE CASCADE
             )
         ''')
+        
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS voice_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                audio_data BLOB NOT NULL,
+                reference_text TEXT NOT NULL,
+                language TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(username),
+                UNIQUE(user_id, name)
+            )
+        ''')

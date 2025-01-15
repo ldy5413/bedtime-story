@@ -1,8 +1,9 @@
 import re
-from flask import request, jsonify, Blueprint, current_app
+from flask import request, jsonify, Blueprint, current_app, session
 from .f5tts import stream_f5tts_audio
 from .gtts import stream_gtts_audio
 from app.utils import scan_voice_profiles
+import sqlite3
 
 tts_bp = Blueprint('tts', __name__)
 @tts_bp.route('/stream_audio', methods=['POST'])
@@ -33,13 +34,29 @@ def stream_audio():
         return jsonify({'error': 'Failed to process audio stream'}), 500
 
 
-@tts_bp.route('/tts-options', methods=['GET'])
+@tts_bp.route('/tts-options')
 def get_tts_options():
-    profiles = scan_voice_profiles()
-    return jsonify({
-        'services': current_app.config['TTS_SERVICES'],
-        'voices': profiles
-    })
+    try:
+        # Get user's voice profiles
+        if 'user_id' in session:
+            with sqlite3.connect(current_app.config['DATABASE']) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id, name, language 
+                    FROM voice_profiles 
+                    WHERE user_id = ?
+                ''', (session['user_id'],))
+                profiles = [{
+                    'id': row[0],
+                    'name': row[1],
+                    'language': row[2]
+                } for row in cursor.fetchall()]
+                
+                return jsonify({'voices': profiles})
+        return jsonify({'voices': []})
+    except Exception as e:
+        current_app.logger.error(f"Error fetching TTS options: {str(e)}")
+        return jsonify({'error': 'Failed to fetch TTS options'}), 500
 
 # @app.route('/read', methods=['POST'])
 # def read():

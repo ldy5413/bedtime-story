@@ -45,6 +45,61 @@
             </div>
         </div>
 
+        <div class="voice-profiles">
+            <h3>Voice Profiles</h3>
+            <div class="voice-profile-form">
+                <form action="{{ url_for('auth.create_voice_profile') }}" method="POST" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="profile-name">Profile Name:</label>
+                        <input type="text" id="profile-name" name="name" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="reference-text">Reference Text:</label>
+                        <textarea id="reference-text" name="reference_text" required></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Voice Input Method:</label>
+                        <select id="input-method" onchange="toggleInputMethod()">
+                            <option value="upload">Upload Audio File</option>
+                            <option value="record">Record Voice</option>
+                        </select>
+                    </div>
+                    
+                    <div id="upload-section">
+                        <input type="file" name="audio_file" accept="audio/*">
+                    </div>
+                    
+                    <div id="record-section" style="display: none;">
+                        <button type="button" onclick="startRecording()">Start Recording</button>
+                        <button type="button" onclick="stopRecording()" disabled>Stop Recording</button>
+                        <audio id="recordingPreview" controls style="display: none;"></audio>
+                        <input type="hidden" name="recorded_audio" id="recorded-audio-data">
+                    </div>
+                    
+                    <button type="submit">Create Voice Profile</button>
+                </form>
+            </div>
+            
+            <div class="existing-profiles">
+                {% for profile in voice_profiles %}
+                <div class="profile-card">
+                    <div class="profile-header">
+                        <h4>{{ profile.name }}</h4>
+                        <form action="{{ url_for('auth.delete_voice_profile', profile_id=profile.id) }}" method="POST" class="delete-form">
+                            <button type="submit" class="delete-btn" onclick="return confirm('Are you sure you want to delete this voice profile?')">Delete</button>
+                        </form>
+                    </div>
+                    <p>Language: {{ profile.language }}</p>
+                    <p>Created: {{ profile.created_at }}</p>
+                    <p>Reference Text: {{ profile.reference_text }}</p>
+                    <audio controls src="{{ url_for('auth.get_profile_audio', profile_id=profile.id) }}"></audio>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
         <div class="recent-activity">
             <h3>Recent Activity</h3>
             <div class="activity-list">

@@ -1,10 +1,13 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file, jsonify
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import os
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
+import base64
+from app.utils import detect_language
+import io
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -125,6 +128,21 @@ def dashboard():
             ''', (session['user_id'],))
             activities = cursor.fetchall()
             
+            # Get voice profiles
+            cursor.execute('''
+                SELECT id, name, language, created_at, reference_text 
+                FROM voice_profiles 
+                WHERE user_id = ? 
+                ORDER BY created_at DESC
+            ''', (session['user_id'],))
+            voice_profiles = [{
+                'id': row[0],
+                'name': row[1],
+                'language': row[2],
+                'created_at': row[3],
+                'reference_text': row[4]
+            } for row in cursor.fetchall()]
+            
             user = {
                 'username': user_data[0],
                 'created_at': user_data[1],
@@ -145,7 +163,8 @@ def dashboard():
             return render_template('dashboard.html', 
                                  user=user, 
                                  stats=stats, 
-                                 recent_activities=recent_activities)
+                                 recent_activities=recent_activities,
+                                 voice_profiles=voice_profiles)
     except Exception as e:
         current_app.logger.error(f"Dashboard error: {str(e)}")
         flash('Error loading dashboard')
@@ -202,3 +221,109 @@ def upload_avatar():
             flash('Error uploading avatar')
             
     return redirect(url_for('auth.dashboard')) 
+
+@auth_bp.route('/create_voice_profile', methods=['POST'])
+@login_required
+def create_voice_profile():
+    try:
+        name = request.form.get('name')
+        reference_text = request.form.get('reference_text')
+        
+        if not name or not reference_text:
+            flash('Profile name and reference text are required')
+            return redirect(url_for('auth.dashboard'))
+            
+        # Detect language of reference text
+        language = detect_language(reference_text)
+        
+        # Get audio data from either file upload or recording
+        if 'audio_file' in request.files:
+            audio_file = request.files['audio_file']
+            if audio_file.filename:
+                audio_data = audio_file.read()
+            else:
+                flash('No audio file selected')
+                return redirect(url_for('auth.dashboard'))
+        elif 'recorded_audio' in request.form:
+            # Handle base64 encoded recorded audio
+            audio_base64 = request.form['recorded_audio'].split(',')[1]
+            audio_data = base64.b64decode(audio_base64)
+        else:
+            flash('No audio input provided')
+            return redirect(url_for('auth.dashboard'))
+            
+        with sqlite3.connect(current_app.config['DATABASE']) as conn:
+            conn.execute('''
+                INSERT INTO voice_profiles (user_id, name, audio_data, reference_text, language)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (session['user_id'], name, audio_data, reference_text, language))
+            
+        flash('Voice profile created successfully')
+    except Exception as e:
+        current_app.logger.error(f"Error creating voice profile: {str(e)}")
+        flash('Error creating voice profile')
+        
+    return redirect(url_for('auth.dashboard'))
+
+@auth_bp.route('/profile_audio/<int:profile_id>')
+@login_required
+def get_profile_audio(profile_id):
+    try:
+        with sqlite3.connect(current_app.config['DATABASE']) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT audio_data FROM voice_profiles 
+                WHERE id = ? AND user_id = ?
+            ''', (profile_id, session['user_id']))
+            result = cursor.fetchone()
+            
+            if result:
+                return send_file(
+                    io.BytesIO(result[0]),
+                    mimetype='audio/wav'
+                )
+    except Exception as e:
+        current_app.logger.error(f"Error retrieving profile audio: {str(e)}")
+    return '', 404 
+
+@auth_bp.route('/delete_voice_profile/<int:profile_id>', methods=['POST'])
+@login_required
+def delete_voice_profile(profile_id):
+    try:
+        with sqlite3.connect(current_app.config['DATABASE']) as conn:
+            cursor = conn.cursor()
+            # Verify ownership before deleting
+            cursor.execute('''
+                DELETE FROM voice_profiles 
+                WHERE id = ? AND user_id = ?
+            ''', (profile_id, session['user_id']))
+            
+        flash('Voice profile deleted successfully')
+    except Exception as e:
+        current_app.logger.error(f"Error deleting voice profile: {str(e)}")
+        flash('Error deleting voice profile')
+        
+    return redirect(url_for('auth.dashboard')) 
+
+@auth_bp.route('/voice_profiles')
+@login_required
+def get_voice_profiles():
+    try:
+        with sqlite3.connect(current_app.config['DATABASE']) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, name, language 
+                FROM voice_profiles 
+                WHERE user_id = ? 
+                ORDER BY name
+            ''', (session['user_id'],))
+            profiles = [{
+                'id': row[0],
+                'name': row[1],
+                'language': row[2]
+            } for row in cursor.fetchall()]
+            
+        return jsonify({'profiles': profiles})
+    except Exception as e:
+        current_app.logger.error(f"Error fetching voice profiles: {str(e)}")
+        return jsonify({'error': 'Failed to fetch voice profiles'}), 500 

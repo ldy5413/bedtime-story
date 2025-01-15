@@ -1,6 +1,16 @@
 import sqlite3
 def init_db(DATABASE):
     with sqlite3.connect(DATABASE) as conn:
+        # Create users table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
         conn.execute('''
             CREATE TABLE IF NOT EXISTS stories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -8,11 +18,11 @@ def init_db(DATABASE):
                 content TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 favorite BOOLEAN DEFAULT FALSE,
-                user_id TEXT DEFAULT 'valley'
+                user_id TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(username)
             )
         ''')
         
-        # Create a new table for cached audio
         conn.execute('''
             CREATE TABLE IF NOT EXISTS audio_cache (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

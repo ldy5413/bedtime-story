@@ -1,12 +1,14 @@
-from flask import request, jsonify, Response, Blueprint, current_app
+from flask import request, jsonify, Response, Blueprint, current_app, session
 from openai import OpenAI
 import json
 from app.utils import detect_language
 import sqlite3
+from app.auth.auth import login_required
 
 
 story_bp = Blueprint('story', __name__)
 @story_bp.route('/generate', methods=['GET'])
+@login_required
 def generate():
     current_app.logger.info("Starting story generation")
     theme = request.args.get('theme')
@@ -123,8 +125,8 @@ def save_story(theme, content):
         with sqlite3.connect(current_app.config['DATABASE']) as conn:
             conn.execute('''
                 INSERT INTO stories (theme, content, user_id) 
-                VALUES (?, ?, 'valley')
-            ''', (theme, content))
+                VALUES (?, ?, ?)
+            ''', (theme, content, session['user_id']))
             current_app.logger.info("Story saved successfully")
     except Exception as e:
         current_app.logger.error(f"Failed to save story: {str(e)}")

@@ -22,11 +22,13 @@ def create_app():
         from .tts import tts_bp
         from .db import db_bp
         from .general import general_bp
+        from .auth import auth_bp
         
         app.register_blueprint(story_bp)
         app.register_blueprint(tts_bp)
         app.register_blueprint(db_bp)
         app.register_blueprint(general_bp)
+        app.register_blueprint(auth_bp)
         app.logger.info("All blueprints registered successfully")
     except Exception as e:
         app.logger.error(f"Blueprint registration failed: {str(e)}")

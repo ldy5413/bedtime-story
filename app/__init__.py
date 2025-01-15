@@ -1,6 +1,7 @@
 from flask import Flask
 from app.db import init_db
 from app.utils.logger import setup_logger
+import os
 
 def create_app():
     app = Flask(__name__)
@@ -28,7 +29,7 @@ def create_app():
         app.register_blueprint(tts_bp)
         app.register_blueprint(db_bp)
         app.register_blueprint(general_bp)
-        app.register_blueprint(auth_bp)
+        app.register_blueprint(auth_bp, url_prefix='/auth')
         app.logger.info("All blueprints registered successfully")
     except Exception as e:
         app.logger.error(f"Blueprint registration failed: {str(e)}")

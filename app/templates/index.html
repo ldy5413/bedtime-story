@@ -5,6 +5,10 @@
     <link rel="stylesheet" href="static/styles.css">
 </head>
 <body>
+    <nav class="top-nav">
+        <a href="{{ url_for('auth.dashboard') }}" class="nav-link">Dashboard</a>
+        <button onclick="window.location.href='{{ url_for('auth.logout') }}'" class="logout-btn">Logout</button>
+    </nav>
     <div class="container">
         <!-- Left Panel - Story Generation -->
         <div class="left-panel">

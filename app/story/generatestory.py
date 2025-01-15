@@ -14,6 +14,9 @@ def generate():
     theme = request.args.get('theme')
     language = request.args.get('language', 'en')
     
+    # Get user_id from session while in request context
+    user_id = session['user_id']
+    
     current_app.logger.info(f"Received request - Theme: {theme}, Language: {language}")
     
     if not theme:
@@ -60,7 +63,7 @@ def generate():
                 current_app.logger.info(f"Story generation complete. Total chunks: {chunk_count}")
                 
                 try:
-                    save_story(theme, full_story)
+                    save_story(theme, full_story, user_id)
                     current_app.logger.info("Story saved successfully")
                 except Exception as e:
                     current_app.logger.error(f"Error saving story: {str(e)}")
@@ -119,14 +122,14 @@ def generate_story(theme, language='en'):
         return f"Error generating story: {str(e)}"
     
 # Save story to database
-def save_story(theme, content):
+def save_story(theme, content, user_id):
     try:
         current_app.logger.info(f"Attempting to save story with theme: {theme}")
         with sqlite3.connect(current_app.config['DATABASE']) as conn:
             conn.execute('''
                 INSERT INTO stories (theme, content, user_id) 
                 VALUES (?, ?, ?)
-            ''', (theme, content, session['user_id']))
+            ''', (theme, content, user_id))
             current_app.logger.info("Story saved successfully")
     except Exception as e:
         current_app.logger.error(f"Failed to save story: {str(e)}")

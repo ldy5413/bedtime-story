@@ -190,10 +190,12 @@ button:disabled {
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     width: 100%;
     max-width: 400px;
+    box-sizing: border-box;
 }
 
 .form-group {
     margin-bottom: 1rem;
+    width: 100%;
 }
 
 .form-group label {
@@ -206,6 +208,7 @@ button:disabled {
     padding: 0.5rem;
     border: 1px solid #ddd;
     border-radius: 4px;
+    box-sizing: border-box;
 }
 
 .flash-message {
@@ -244,4 +247,107 @@ button:disabled {
 
 .auth-box a:hover {
     text-decoration: underline;
+}
+
+/* Navigation */
+.top-nav {
+    display: flex;
+    justify-content: flex-end;
+    padding: 1rem;
+    background: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 2rem;
+}
+
+.nav-link {
+    color: #3498db;
+    text-decoration: none;
+    margin-right: 1rem;
+    padding: 0.5rem 1rem;
+}
+
+.logout-btn {
+    background: #e74c3c;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* Dashboard */
+.dashboard-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.user-profile {
+    display: flex;
+    align-items: center;
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 2rem;
+}
+
+.avatar-container {
+    margin-right: 2rem;
+}
+
+.avatar {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.avatar-form {
+    margin-top: 1rem;
+    text-align: center;
+}
+
+.user-info h2 {
+    margin: 0;
+    color: #2c3e50;
+}
+
+.stats-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    text-align: center;
+}
+
+.stat-number {
+    font-size: 2rem;
+    color: #3498db;
+    margin: 0.5rem 0;
+}
+
+.recent-activity {
+    background: white;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.activity-item {
+    padding: 1rem;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+}
+
+.activity-date {
+    color: #7f8c8d;
 }

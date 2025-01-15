@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard - Bedtime Story Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="dashboard-container">
+        <nav class="top-nav">
+            <a href="{{ url_for('general.index') }}" class="nav-link">Read Stories</a>
+            <button onclick="window.location.href='{{ url_for('auth.logout') }}'" class="logout-btn">Logout</button>
+        </nav>
+        
+        <div class="user-profile">
+            <div class="avatar-container">
+                {% if user.avatar_url %}
+                    <img src="{{ url_for('static', filename=user.avatar_url) }}" alt="Avatar" class="avatar">
+                {% else %}
+                    <img src="{{ url_for('static', filename='avatars/default_avatar.png') }}" alt="Default Avatar" class="avatar">
+                {% endif %}
+                <form action="{{ url_for('auth.upload_avatar') }}" method="POST" enctype="multipart/form-data" class="avatar-form">
+                    <input type="file" name="avatar" accept="image/*" id="avatar-input">
+                    <button type="submit">Update Avatar</button>
+                </form>
+            </div>
+            
+            <div class="user-info">
+                <h2>{{ user.username }}</h2>
+                <p>Member since: {{ user.created_at }}</p>
+            </div>
+        </div>
+
+        <div class="stats-container">
+            <div class="stat-card">
+                <h3>Total Stories</h3>
+                <p class="stat-number">{{ stats.total_stories }}</p>
+            </div>
+            <div class="stat-card">
+                <h3>Favorite Stories</h3>
+                <p class="stat-number">{{ stats.favorite_stories }}</p>
+            </div>
+            <div class="stat-card">
+                <h3>Stories This Month</h3>
+                <p class="stat-number">{{ stats.stories_this_month }}</p>
+            </div>
+        </div>
+
+        <div class="recent-activity">
+            <h3>Recent Activity</h3>
+            <div class="activity-list">
+                {% for activity in recent_activities %}
+                    <div class="activity-item">
+                        <span class="activity-date">{{ activity.date }}</span>
+                        <span class="activity-description">{{ activity.description }}</span>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</body>
+</html> 

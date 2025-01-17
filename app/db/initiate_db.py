@@ -31,10 +31,16 @@ def init_db(DATABASE):
                 chunk_text TEXT NOT NULL,
                 audio_data BLOB NOT NULL,
                 voice_profile TEXT NOT NULL,
+                user_id TEXT,
+                language TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (story_id) REFERENCES stories(id) ON DELETE CASCADE
+                FOREIGN KEY (story_id) REFERENCES stories(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES users(username)
             )
         ''')
+        
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_user_id ON audio_cache(user_id)')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_language ON audio_cache(language)')
         
         conn.execute('''
             CREATE TABLE IF NOT EXISTS voice_profiles (

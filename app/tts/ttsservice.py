@@ -19,6 +19,34 @@ def stream_audio():
         language = request.json.get('language', 'en')
         tts_service = request.json.get('tts_service', 'gtts')
         voice_profile = request.json.get('voice_profile')
+        #import pdb; pdb.set_trace()
+        current_app.logger.info(f"Voice profile: {voice_profile}")
+        # Load voice profile from database if provided
+        if voice_profile  and 'user_id' in session:
+            try:
+                with sqlite3.connect(current_app.config['DATABASE']) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        SELECT id, audio_data, reference_text, language, name
+                        FROM voice_profiles 
+                        WHERE user_id = ? AND id = ?
+                    ''', (session['user_id'], voice_profile))
+                    profile_data = cursor.fetchone()
+                    
+                    if profile_data:
+                        voice_profile={
+                            'id': profile_data[0],
+                            'ref_audio': profile_data[1],
+                            'ref_text': profile_data[2],
+                            'language': profile_data[3],
+                            'name': profile_data[4]
+                        }
+                    else:
+                        current_app.logger.warning(f"Voice profile not found: {voice_profile['name']}")
+                        voice_profile = None
+            except Exception as e:
+                current_app.logger.error(f"Error loading voice profile: {str(e)}")
+                voice_profile = None
 
         current_app.logger.info(f"Processing TTS request: service={tts_service}, language={language}")
 

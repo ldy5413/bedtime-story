@@ -8,6 +8,8 @@ from importlib.resources import files
 import logging
 import json
 import io
+import base64
+from typing import Union, Dict
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -30,7 +32,6 @@ AUDIO_DIR.mkdir(exist_ok=True)
 
 # Get default reference audio path
 DEFAULT_REF_AUDIO = files("f5_tts").joinpath("infer/examples/basic/basic_ref_zh.wav")
-
 DEFAULT_REF_TEXT = "对,这就是我万人敬仰的太乙真人."
 
 # Load models on startup
@@ -51,7 +52,7 @@ except Exception as e:
 
 class TTSRequest(BaseModel):
     text_to_generate: str
-    ref_audio: str = str(DEFAULT_REF_AUDIO)
+    ref_audio: Union[str, Dict[str, str]] = str(DEFAULT_REF_AUDIO)  # Can be path or dict with base64
     ref_text: str = DEFAULT_REF_TEXT
     remove_silence: bool = True
     cross_fade_duration: float = 0.15
@@ -64,14 +65,27 @@ async def text_to_speech(request: TTSRequest):
     try:
         logger.info(f"Processing request with text: {request.text_to_generate}")
         
-        # Process reference audio and text
+        # Handle ref_audio based on type
+        if isinstance(request.ref_audio, dict) and request.ref_audio.get('type') == 'base64':
+            # Convert base64 to file-like object
+            base64_bytes = request.ref_audio['data'].encode('utf-8')
+            audio_bytes = base64.b64decode(base64_bytes)
+            audio_io = io.BytesIO(audio_bytes)
+            audio_io.seek(0)
+            ref_audio = audio_io
+        else:
+            # Use as file path
+            ref_audio = request.ref_audio
+
         try:
+            # Process reference audio and text
             ref_audio, ref_text = preprocess_ref_audio_text(
-                request.ref_audio, 
+                ref_audio, 
                 request.ref_text
             )
         except Exception as e:
             logger.error(f"Error in preprocessing: {str(e)}")
+            import pdb; pdb.set_trace()
             raise HTTPException(status_code=500, detail=f"Preprocessing error: {str(e)}")
 
         # Generate speech
@@ -84,7 +98,7 @@ async def text_to_speech(request: TTSRequest):
                 vocoder=vocoder,
                 cross_fade_duration=request.cross_fade_duration,
                 nfe_step=request.nfe_step,
-                speed=request.speed
+                speed=request.speed,
             )
         except Exception as e:
             logger.error(f"Error in speech generation: {str(e)}")

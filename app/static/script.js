@@ -24,10 +24,13 @@ function updateVoiceOptions() {
     voiceSelect.innerHTML = '<option value="">Default</option>';
     
     // Only show voice profiles for F5 TTS
-    if (ttsService === 'f5tts' && voiceProfiles[language]) {
-        voiceProfiles[language].forEach(profile => {
+    if (ttsService === 'f5tts' && voiceProfiles && voiceProfiles.length > 0) {
+        // Filter profiles by selected language
+        const languageProfiles = voiceProfiles.filter(profile => profile.language === language);
+        
+        languageProfiles.forEach(profile => {
             const option = document.createElement('option');
-            option.value = JSON.stringify(profile);
+            option.value = profile.id;
             option.textContent = profile.name;
             voiceSelect.appendChild(option);
         });
@@ -36,6 +39,10 @@ function updateVoiceOptions() {
         voiceSelect.style.display = 'none';
     }
 }
+
+// Add event listeners for language and tts-service changes
+document.getElementById('language').addEventListener('change', updateVoiceOptions);
+document.getElementById('tts-service').addEventListener('change', updateVoiceOptions);
 
 // Load TTS options when page loads
 document.addEventListener('DOMContentLoaded', () => {
@@ -184,7 +191,7 @@ function addStoryButtonListeners() {
     });
 }
 
-// Handle click on read story buttons
+// Handle click on read story buttons for saved stories
 document.addEventListener('click', async (e) => {
     if (e.target.classList.contains('read-story-btn')) {
         const storyId = e.target.dataset.id;
@@ -193,51 +200,52 @@ document.addEventListener('click', async (e) => {
             const data = await response.json();
 
             if (data.story) {
-                document.getElementById('storyOutput').textContent = data.story;
+                await streamAudio(data.story, data.language);
+                // document.getElementById('storyOutput').textContent = data.story;
 
-                // Stream audio
-                const audioPlayer = document.getElementById('audioPlayer');
-                const responseStream = await fetch('/stream_audio', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        story: data.story,
-                        language: data.language,
-                    }),
-                });
+                // // Stream audio
+                // const audioPlayer = document.getElementById('audioPlayer');
+                // const responseStream = await fetch('/stream_audio', {
+                //     method: 'POST',
+                //     headers: { 'Content-Type': 'application/json' },
+                //     body: JSON.stringify({
+                //         story: data.story,
+                //         language: data.language,
+                //     }),
+                // });
 
-                const reader = responseStream.body.getReader();
-                const mediaSource = new MediaSource();
-                audioPlayer.src = URL.createObjectURL(mediaSource);
+                // const reader = responseStream.body.getReader();
+                // const mediaSource = new MediaSource();
+                // audioPlayer.src = URL.createObjectURL(mediaSource);
 
-                mediaSource.addEventListener('sourceopen', async () => {
-                    const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
-                    sourceBuffer.mode = 'sequence'; // Avoid overlapping issues
-                    let done = false;
+                // mediaSource.addEventListener('sourceopen', async () => {
+                //     const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+                //     sourceBuffer.mode = 'sequence'; // Avoid overlapping issues
+                //     let done = false;
 
-                    while (!done) {
-                        const { value, done: readerDone } = await reader.read();
-                        if (value) {
-                            if (sourceBuffer.updating) {
-                                // Wait until the buffer is ready for new data
-                                await new Promise(resolve => {
-                                    sourceBuffer.addEventListener('updateend', resolve, { once: true });
-                                });
-                            }
-                            sourceBuffer.appendBuffer(value);
-                        }
-                        done = readerDone;
-                    }
+                //     while (!done) {
+                //         const { value, done: readerDone } = await reader.read();
+                //         if (value) {
+                //             if (sourceBuffer.updating) {
+                //                 // Wait until the buffer is ready for new data
+                //                 await new Promise(resolve => {
+                //                     sourceBuffer.addEventListener('updateend', resolve, { once: true });
+                //                 });
+                //             }
+                //             sourceBuffer.appendBuffer(value);
+                //         }
+                //         done = readerDone;
+                //     }
 
-                    // End the stream once all chunks are appended
-                    sourceBuffer.addEventListener('updateend', () => {
-                        if (done) {
-                            mediaSource.endOfStream();
-                        }
-                    });
-                });
+                //     // End the stream once all chunks are appended
+                //     sourceBuffer.addEventListener('updateend', () => {
+                //         if (done) {
+                //             mediaSource.endOfStream();
+                //         }
+                //     });
+                // });
 
-                audioPlayer.play();
+                // audioPlayer.play();
             }
         } catch (error) {
             console.error('Error loading story:', error);

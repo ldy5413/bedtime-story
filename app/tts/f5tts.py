@@ -13,7 +13,7 @@ def stream_f5tts_audio(story, language, voice_profile, DATABASE):
     user_id = session.get('user_id') if session else None
     
     try:
-        if voice_profile:
+        if isinstance(voice_profile, dict):
             ref_audio = voice_profile.get('ref_audio')
             # Convert bytes to base64 string if ref_audio is in bytes
             if isinstance(ref_audio, bytes):

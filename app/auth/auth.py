@@ -228,6 +228,7 @@ def create_voice_profile():
     try:
         name = request.form.get('name')
         reference_text = request.form.get('reference_text')
+        input_method = request.form.get('input_method')
         
         if not name or not reference_text:
             flash('Profile name and reference text are required')
@@ -236,24 +237,53 @@ def create_voice_profile():
         # Detect language of reference text
         language = detect_language(reference_text)
         
-        # Get audio data from either file upload or recording
-        if 'audio_file' in request.files:
+        # Get audio data based on input method
+        if input_method == 'upload':
+            if 'audio_file' not in request.files:
+                flash('No audio file uploaded')
+                return redirect(url_for('auth.dashboard'))
+                
             audio_file = request.files['audio_file']
-            if audio_file.filename:
-                audio_data = audio_file.read()
-            else:
+            if audio_file.filename == '':
                 flash('No audio file selected')
                 return redirect(url_for('auth.dashboard'))
-        elif 'recorded_audio' in request.form:
-            # Handle base64 encoded recorded audio
-            audio_base64 = request.form['recorded_audio'].split(',')[1]
-            audio_data = base64.b64decode(audio_base64)
-        else:
-            flash('No audio input provided')
-            return redirect(url_for('auth.dashboard'))
-            
+                
+            audio_data = audio_file.read()
+        else:  # input_method == 'record'
+            recorded_audio = request.form.get('recorded_audio')
+            if not recorded_audio:
+                flash('No recorded audio data received')
+                return redirect(url_for('auth.dashboard'))
+                
+            try:
+                # Handle the complete base64 string (including data URI prefix)
+                if ',' in recorded_audio:
+                    # Split off the data URI prefix if present
+                    recorded_audio = recorded_audio.split(',', 1)[1]
+                
+                # Ensure the base64 string is properly padded
+                padding = 4 - (len(recorded_audio) % 4)
+                if padding != 4:
+                    recorded_audio += '=' * padding
+                
+                # Convert base64 to binary
+                audio_data = base64.b64decode(recorded_audio)
+                
+                # Debug logging
+                current_app.logger.info(f"Decoded audio data size: {len(audio_data)} bytes")
+                
+            except Exception as e:
+                current_app.logger.error(f"Error decoding base64 audio: {str(e)}")
+                flash('Error processing recorded audio')
+                return redirect(url_for('auth.dashboard'))
+        
+        # Debug logging
+        current_app.logger.info(f"Creating voice profile: {name}, Language: {language}")
+        current_app.logger.info(f"Audio data size: {len(audio_data)} bytes")
+        
         with sqlite3.connect(current_app.config['DATABASE']) as conn:
-            conn.execute('''
+            cursor = conn.cursor()
+            cursor.execute('''
                 INSERT INTO voice_profiles (user_id, name, audio_data, reference_text, language)
                 VALUES (?, ?, ?, ?, ?)
             ''', (session['user_id'], name, audio_data, reference_text, language))

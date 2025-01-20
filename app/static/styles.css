@@ -392,3 +392,50 @@ button:disabled {
     padding-bottom: 2rem;
     border-bottom: 1px solid #eee;
 }
+
+.recording-controls {
+    margin: 15px 0;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+.record-btn {
+    padding: 8px 16px;
+    margin-right: 10px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+}
+
+.record-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.recording-status {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#recordingStatus.recording {
+    color: red;
+    animation: blink 1s infinite;
+}
+
+#recordingTimer {
+    font-family: monospace;
+    font-size: 1.1em;
+}
+
+.recording-preview {
+    margin-top: 15px;
+}
+
+@keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}

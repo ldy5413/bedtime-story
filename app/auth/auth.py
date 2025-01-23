@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 import base64
 from app.utils import detect_language
 import io
+from app.utils.email_service import send_verification_email, generate_verification_code
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -50,11 +51,13 @@ def register():
         
     if request.method == 'POST':
         username = request.form.get('username')
+        email = request.form.get('email')
         password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
+        verification_code = request.form.get('verification_code')
         
-        if not username or not password:
-            flash('Username and password are required')
+        if not username or not password or not email:
+            flash('All fields are required')
             return render_template('auth/register.html')
             
         if password != confirm_password:
@@ -62,23 +65,96 @@ def register():
             return render_template('auth/register.html')
             
         try:
+            # Get verification data from session
+            verification_data = session.get('verification_data')
+            
+            if not verification_data:
+                flash('Please request a verification code first')
+                return render_template('auth/register.html')
+            
+            # Convert expiry time to naive datetime for comparison
+            expiry_time = verification_data['expires'].replace(tzinfo=None)
+            if datetime.now() > expiry_time:
+                session.pop('verification_data', None)
+                flash('Verification code expired')
+                return render_template('auth/register.html')
+            
+            if verification_code != verification_data['code']:
+                flash('Invalid verification code')
+                return render_template('auth/register.html')
+            
+            # If verification successful, create the user
             with sqlite3.connect(current_app.config['DATABASE']) as conn:
                 cursor = conn.cursor()
-                cursor.execute('SELECT username FROM users WHERE username = ?', (username,))
-                if cursor.fetchone():
-                    flash('Username already exists')
-                    return render_template('auth/register.html')
-                    
                 password_hash = generate_password_hash(password)
-                cursor.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)',
-                             (username, password_hash))
-                flash('Registration successful! Please login.')
-                return redirect(url_for('auth.login'))
+                cursor.execute('''
+                    INSERT INTO users (username, email, password_hash) 
+                    VALUES (?, ?, ?)
+                ''', (username, email, password_hash))
+                
+            # Clear verification data
+            session.pop('verification_data', None)
+            
+            # Return success response
+            return jsonify({
+                'success': True,
+                'message': 'Registration successful! Redirecting to login...'
+            })
+                
         except Exception as e:
             current_app.logger.error(f"Registration error: {str(e)}")
-            flash('An error occurred during registration')
+            return jsonify({
+                'success': False,
+                'message': 'An error occurred during registration'
+            })
             
-    return render_template('auth/register.html', allow_register=current_app.config['ALLOW_REGISTER'])
+    return render_template('auth/register.html')
+
+@auth_bp.route('/verify_email', methods=['POST'])
+def verify_email():
+    verification_code = request.form.get('verification_code')
+    email = request.form.get('email')
+    username = request.form.get('username')
+    password = request.form.get('password')
+    
+    # Get verification data from session
+    verification_data = session.get('verification_data')
+    
+    if not verification_data:
+        flash('Verification session expired')
+        return redirect(url_for('auth.register'))
+        
+    if datetime.now() > verification_data['expires']:
+        session.pop('verification_data', None)
+        flash('Verification code expired')
+        return redirect(url_for('auth.register'))
+        
+    if verification_code != verification_data['code']:
+        flash('Invalid verification code')
+        return render_template('auth/register.html', 
+                             show_verification=True,
+                             email=email,
+                             username=username,
+                             password=password)
+    
+    try:
+        with sqlite3.connect(current_app.config['DATABASE']) as conn:
+            cursor = conn.cursor()
+            password_hash = generate_password_hash(password)
+            cursor.execute('''
+                INSERT INTO users (username, email, password_hash) 
+                VALUES (?, ?, ?)
+            ''', (username, email, password_hash))
+            
+        # Clear verification data
+        session.pop('verification_data', None)
+        flash('Registration successful! Please login.')
+        return redirect(url_for('auth.login'))
+        
+    except Exception as e:
+        current_app.logger.error(f"Error creating user: {str(e)}")
+        flash('An error occurred during registration')
+        return redirect(url_for('auth.register'))
 
 @auth_bp.route('/logout')
 def logout():
@@ -357,3 +433,46 @@ def get_voice_profiles():
     except Exception as e:
         current_app.logger.error(f"Error fetching voice profiles: {str(e)}")
         return jsonify({'error': 'Failed to fetch voice profiles'}), 500 
+
+@auth_bp.route('/send_verification', methods=['POST'])
+def send_verification():
+    try:
+        data = request.get_json()
+        email = data.get('email')
+        username = data.get('username')
+        
+        if not email or not username:
+            return jsonify({'success': False, 'message': 'Email and username are required'}), 400
+            
+        # Check if username exists
+        with sqlite3.connect(current_app.config['DATABASE']) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT username FROM users WHERE username = ?', (username,))
+            if cursor.fetchone():
+                return jsonify({'success': False, 'message': 'Username already exists'}), 400
+            
+            # Check if email exists
+            cursor.execute('SELECT email FROM users WHERE email = ?', (email,))
+            if cursor.fetchone():
+                return jsonify({'success': False, 'message': 'Email already registered'}), 400
+        
+        # Generate verification code
+        verification_code = generate_verification_code()
+        
+        # Store verification data in session with naive datetime
+        session['verification_data'] = {
+            'code': verification_code,
+            'email': email,
+            'username': username,
+            'expires': datetime.now().replace(tzinfo=None) + timedelta(minutes=10)
+        }
+        
+        # Send verification email
+        if send_verification_email(email, verification_code):
+            return jsonify({'success': True, 'message': 'Verification code sent'})
+        else:
+            return jsonify({'success': False, 'message': 'Failed to send verification code'}), 500
+            
+    except Exception as e:
+        current_app.logger.error(f"Error sending verification code: {str(e)}")
+        return jsonify({'success': False, 'message': 'Server error'}), 500 

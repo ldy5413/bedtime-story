@@ -8,6 +8,7 @@
     <div class="auth-container">
         <div class="auth-box">
             <h1>Register</h1>
+            
             {% with messages = get_flashed_messages() %}
                 {% if messages %}
                     {% for message in messages %}
@@ -15,23 +16,328 @@
                     {% endfor %}
                 {% endif %}
             {% endwith %}
-            <form method="POST" action="{{ url_for('auth.register') }}">
+
+            <form method="POST" action="{{ url_for('auth.register') }}" class="auth-form" id="register-form">
                 <div class="form-group">
                     <label for="username">Username:</label>
                     <input type="text" id="username" name="username" required>
                 </div>
+                
+                <div class="form-group">
+                    <label for="email">Email:</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+                
                 <div class="form-group">
                     <label for="password">Password:</label>
                     <input type="password" id="password" name="password" required>
                 </div>
+                
                 <div class="form-group">
                     <label for="confirm_password">Confirm Password:</label>
                     <input type="password" id="confirm_password" name="confirm_password" required>
                 </div>
-                <button type="submit">Register</button>
+
+                <div class="form-group">
+                    <label for="verification_code">Verification Code:</label>
+                    <div class="verification-input-group">
+                        <input type="text" 
+                               id="verification_code" 
+                               name="verification_code" 
+                               placeholder="Enter 6-digit code" 
+                               required
+                               maxlength="6"
+                               pattern="[A-Z0-9]*"
+                               style="width: 150px;"
+                               autocomplete="off"
+                               oninput="this.value = this.value.toUpperCase()">
+                        <button type="button" id="send-code-btn" class="secondary-btn">
+                            Send Code
+                        </button>
+                    </div>
+                </div>
+                
+                <input type="hidden" name="is_verifying" value="true">
+                <button type="submit" class="primary-btn">Register</button>
             </form>
-            <p>Already have an account? <a href="{{ url_for('auth.login') }}">Login here</a></p>
+            
+            <div class="auth-footer">
+                <p>Already have an account? <a href="{{ url_for('auth.login') }}">Login here</a></p>
+            </div>
         </div>
     </div>
+
+    <!-- Add success modal -->
+    <div id="success-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2>Registration Successful!</h2>
+            <p>Your account has been created successfully.</p>
+            <p>You will be redirected to the login page in <span id="countdown">3</span> seconds...</p>
+        </div>
+    </div>
+
+    <style>
+        .auth-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f5f5f5;
+        }
+
+        .auth-box {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .auth-form {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .verification-input-group {
+            display: flex;
+            gap: 0.5rem;
+            align-items: stretch;
+            height: 42px;
+        }
+
+        .verification-input-group input {
+            flex: 0 0 auto;
+            padding: 0 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+            text-align: center;
+            letter-spacing: 2px;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        .verification-input-group button {
+            white-space: nowrap;
+            padding: 0 1rem;
+            font-size: 0.9rem;
+            min-width: 100px;
+            height: 100%;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .form-group label {
+            font-weight: 500;
+            color: #333;
+        }
+
+        .form-group input {
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+
+        .primary-btn {
+            background-color: #3498db;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            width: 100%;
+        }
+
+        .secondary-btn {
+            background-color: #95a5a6;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .primary-btn:hover {
+            background-color: #2980b9;
+        }
+
+        .secondary-btn:hover {
+            background-color: #7f8c8d;
+        }
+
+        .flash-message {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .auth-footer {
+            margin-top: 1.5rem;
+            text-align: center;
+            color: #666;
+        }
+
+        .auth-footer a {
+            color: #3498db;
+            text-decoration: none;
+        }
+
+        .auth-footer a:hover {
+            text-decoration: underline;
+        }
+
+        #send-code-btn.sent {
+            background-color: #27ae60;
+        }
+
+        #send-code-btn.disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        #verification_code::-webkit-outer-spin-button,
+        #verification_code::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        #verification_code {
+            -moz-appearance: textfield;
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 8px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .modal-content h2 {
+            color: #27ae60;
+            margin-bottom: 1rem;
+        }
+    </style>
+
+    <script>
+        document.getElementById('send-code-btn').addEventListener('click', async function() {
+            const email = document.getElementById('email').value;
+            const username = document.getElementById('username').value;
+            
+            if (!email || !username) {
+                alert('Please fill in both username and email first');
+                return;
+            }
+
+            this.disabled = true;
+            this.classList.add('disabled');
+            this.textContent = 'Sending...';
+
+            try {
+                const response = await fetch('{{ url_for("auth.send_verification") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email, username })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    this.textContent = 'Code Sent';
+                    this.classList.add('sent');
+                    setTimeout(() => {
+                        this.disabled = false;
+                        this.classList.remove('disabled');
+                        this.textContent = 'Resend Code';
+                    }, 60000); // Enable resend after 1 minute
+                } else {
+                    throw new Error(data.message || 'Failed to send code');
+                }
+            } catch (error) {
+                alert(error.message || 'Error sending verification code');
+                this.disabled = false;
+                this.classList.remove('disabled');
+                this.textContent = 'Send Code';
+            }
+        });
+
+        document.getElementById('verification_code').addEventListener('input', function(e) {
+            // Remove any characters that aren't capital letters or numbers
+            this.value = this.value.replace(/[^A-Z0-9]/g, '');
+            
+            // Limit to 6 characters
+            if (this.value.length > 6) {
+                this.value = this.value.slice(0, 6);
+            }
+        });
+
+        document.getElementById('register-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            try {
+                const formData = new FormData(this);
+                const response = await fetch(this.action, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Show success modal
+                    const modal = document.getElementById('success-modal');
+                    modal.style.display = 'flex';
+                    
+                    // Start countdown
+                    let countdown = 3;
+                    const countdownElement = document.getElementById('countdown');
+                    const countdownInterval = setInterval(() => {
+                        countdown--;
+                        countdownElement.textContent = countdown;
+                        if (countdown <= 0) {
+                            clearInterval(countdownInterval);
+                            window.location.href = '{{ url_for("auth.login") }}';
+                        }
+                    }, 1000);
+                } else {
+                    alert(data.message || 'Registration failed');
+                }
+            } catch (error) {
+                alert('Error during registration');
+            }
+        });
+    </script>
 </body>
 </html> 

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="admin-container">
+        {% include 'nav.html' %}
+        
+        <main class="content">
+            <h1>Dashboard</h1>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Total Users</h3>
+                    <p class="stat-number">{{ total_users }}</p>
+                </div>
+                
+                <div class="stat-card">
+                    <h3>Total Stories</h3>
+                    <p class="stat-number">{{ total_stories }}</p>
+                </div>
+                
+                <div class="stat-card">
+                    <h3>Voice Profiles</h3>
+                    <p class="stat-number">{{ total_voice_profiles }}</p>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html> 

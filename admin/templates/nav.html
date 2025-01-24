@@ -1,0 +1,10 @@
+<nav class="admin-nav">
+    <div class="nav-brand">
+        Story Admin
+    </div>
+    <ul class="nav-links">
+        <li><a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">Dashboard</a></li>
+        <li><a href="{{ url_for('users') }}" class="{{ 'active' if request.endpoint == 'users' }}">Users</a></li>
+        <li><a href="{{ url_for('logout') }}">Logout</a></li>
+    </ul>
+</nav> 

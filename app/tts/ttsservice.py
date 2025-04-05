@@ -54,7 +54,7 @@ def stream_audio():
             story = re.sub(r'[\[\]\(\)\（\）\{}\"""\'\'\"《》*#]', '', story)
             return stream_gtts_audio(story, language)
         elif tts_service == 'f5tts':
-            story = re.sub(r'《》*#', '', story)
+            story = re.sub(r'[《》*#]', '', story)
             return stream_f5tts_audio(story, language, voice_profile, current_app.config['DATABASE'])
         else:
             current_app.logger.error(f"Invalid TTS service requested: {tts_service}")

@@ -2,7 +2,9 @@
 <html>
 <head>
     <title>Bedtime Story Generator</title>
-    <link rel="stylesheet" href="static/styles.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='enhanced_styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
     <nav class="top-nav">
@@ -12,14 +14,14 @@
     <div class="container">
         <!-- Left Panel - Story Generation -->
         <div class="left-panel">
-            <h1>Bedtime Story Generator</h1>
+            <h1><i class="fas fa-book-open"></i> Bedtime Story Generator</h1>
             <div class="input-group">
-                <label for="theme">Story Theme:</label>
-                <input type="text" id="theme" placeholder="Enter a theme for the story">
+                <label for="theme"><i class="fas fa-magic"></i> Story Theme:</label>
+                <input type="text" id="theme" placeholder="Enter a theme for the story (e.g., space adventure, fairy tale)">
             </div>
             
             <div class="input-group">
-                <label for="language">Language:</label>
+                <label for="language"><i class="fas fa-language"></i> Language:</label>
                 <select id="language">
                     <option value="zh" selected>Chinese</option>
                     <option value="en">English</option>
@@ -27,7 +29,7 @@
             </div>
 
             <div class="input-group">
-                <label for="tts-service">TTS Service:</label>
+                <label for="tts-service"><i class="fas fa-microphone-alt"></i> TTS Service:</label>
                 <select id="tts-service">
                     <option value="f5tts" selected>F5 TTS</option>
                     <option value="gtts">Google TTS</option>
@@ -35,21 +37,36 @@
             </div>
 
             <div class="input-group">
-                <label for="voice-profile">Voice:</label>
+                <label for="voice-profile"><i class="fas fa-user-voice"></i> Voice:</label>
                 <select id="voice-profile"></select>
             </div>
 
-            <button id="generateBtn">Generate Story</button>
-            <button id="readBtn" disabled>Read Story</button>
+            <div class="button-group">
+                <button id="generateBtn"><i class="fas fa-wand-magic"></i> Generate Story</button>
+                <button id="readBtn" disabled><i class="fas fa-volume-up"></i> Read Story</button>
+            </div>
 
-            <div id="storyOutput"></div>
+            <div id="storyOutput">
+                <div class="story-placeholder">Your story will appear here...</div>
+            </div>
             <audio id="audioPlayer" controls></audio>
         </div>
 
         <!-- Right Panel - Saved Stories -->
         <div class="right-panel">
-            <h1>Saved Stories</h1>
-            <div id="savedStories"></div>
+            <div class="panel-header">
+                <h1><i class="fas fa-bookmark"></i> Saved Stories</h1>
+                <div class="random-read-controls">
+                    <button id="randomReadBtn" class="random-read-btn"><i class="fas fa-random"></i> Random Read</button>
+                    <button id="stopReadBtn" class="stop-read-btn" style="display: none;"><i class="fas fa-stop"></i> Stop Reading</button>
+                </div>
+            </div>
+            <div id="savedStories">
+                <div class="loading-indicator">
+                    <div class="loading"><div></div><div></div><div></div><div></div></div>
+                    <p>Loading your stories...</p>
+                </div>
+            </div>
         </div>
     </div>
     <script src="{{ url_for('static', filename='script.js') }}"></script>

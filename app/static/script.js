@@ -3,6 +3,8 @@ let voiceProfiles = {};
 const STORIES_PER_PAGE = 20;
 let currentPage = 1;
 let totalStories = 0;
+let isContinuousReading = false;
+let audioEndedHandler = null;
 
 async function loadTTSOptions() {
     try {
@@ -48,11 +50,137 @@ document.getElementById('tts-service').addEventListener('change', updateVoiceOpt
 document.addEventListener('DOMContentLoaded', () => {
     loadTTSOptions();
     loadStories();
+    
+    // Add animation class to story cards
+    animateStoryCards();
+    
+    // Initialize placeholder text
+    initializePlaceholder();
 });
+
+// Function to animate story cards with staggered delay
+function animateStoryCards() {
+    const storyCards = document.querySelectorAll('.story-card');
+    storyCards.forEach((card, index) => {
+        setTimeout(() => {
+            card.style.opacity = '1';
+            card.style.transform = 'translateY(0)';
+        }, 100 * index);
+    });
+}
+
+// Function to initialize placeholder text
+function initializePlaceholder() {
+    const storyOutput = document.getElementById('storyOutput');
+    const placeholder = storyOutput.querySelector('.story-placeholder');
+    
+    if (placeholder && !storyOutput.textContent.trim()) {
+        placeholder.style.display = 'block';
+    } else if (placeholder) {
+        placeholder.style.display = 'none';
+    }
+}
+
+// Function to randomly select and read a story from saved stories
+async function readRandomStory(startContinuous = false) {
+    try {
+        if (startContinuous) {
+            isContinuousReading = true;
+            document.getElementById('randomReadBtn').style.display = 'none';
+            document.getElementById('stopReadBtn').style.display = 'inline-flex';
+        }
+        
+        // Show loading indicator in story output
+        const storyOutput = document.getElementById('storyOutput');
+        storyOutput.innerHTML = `
+            <div class="loading-indicator">
+                <div class="loading"><div></div><div></div><div></div><div></div></div>
+                <p>Loading a random story...</p>
+            </div>
+        `;
+        
+        // Fetch all stories
+        const response = await fetch('/stories');
+        const data = await response.json();
+        const stories = data.stories;
+        
+        if (stories.length === 0) {
+            storyOutput.innerHTML = `<div class="error-message">No saved stories found. Generate a story first!</div>`;
+            stopContinuousReading();
+            return;
+        }
+        
+        // Select a random story
+        const randomIndex = Math.floor(Math.random() * stories.length);
+        const randomStory = stories[randomIndex];
+        
+        // Fetch the full story content using the story ID
+        const storyResponse = await fetch(`/stories/${randomStory.id}`);
+        const storyData = await storyResponse.json();
+        
+        if (!storyData.story) {
+            throw new Error('Failed to load the full story content');
+        }
+        
+        // Display the story in the story output area
+        storyOutput.textContent = storyData.story;
+        document.getElementById('language').value = storyData.language || 'zh'; // Default to Chinese if not specified
+        document.getElementById('readBtn').disabled = false;
+        
+        // Stream audio for the random story
+        const audioPlayer = document.getElementById('audioPlayer');
+        
+        // Remove any existing ended event listener
+        if (audioEndedHandler) {
+            audioPlayer.removeEventListener('ended', audioEndedHandler);
+            audioEndedHandler = null;
+        }
+        
+        // Add event listener for continuous reading
+        if (isContinuousReading) {
+            audioEndedHandler = function() {
+                if (isContinuousReading) {
+                    // Start reading the next random story when current one ends
+                    setTimeout(() => readRandomStory(), 1500); // Small delay between stories
+                }
+            };
+            audioPlayer.addEventListener('ended', audioEndedHandler);
+        }
+        
+        await streamAudio(storyData.story, storyData.language || 'zh');
+    } catch (error) {
+        console.error('Error reading random story:', error);
+        document.getElementById('storyOutput').innerHTML = `<div class="error-message">Failed to read a random story. Please try again.</div>`;
+        stopContinuousReading();
+    }
+}
+
+// Function to stop continuous reading
+function stopContinuousReading() {
+    isContinuousReading = false;
+    document.getElementById('randomReadBtn').style.display = 'inline-flex';
+    document.getElementById('stopReadBtn').style.display = 'none';
+    
+    // Remove the ended event listener but don't stop current playback
+    const audioPlayer = document.getElementById('audioPlayer');
+    if (audioEndedHandler) {
+        audioPlayer.removeEventListener('ended', audioEndedHandler);
+        audioEndedHandler = null;
+    }
+}
 
 // Function to load and display stories
 async function loadStories(page = 1) {
     try {
+        // Show loading indicator
+        const container = document.getElementById('savedStories');
+        container.innerHTML = `
+            <div class="loading-indicator">
+                <div class="loading"><div></div><div></div><div></div><div></div></div>
+                <p>Loading your stories...</p>
+            </div>
+        `;
+        
         const response = await fetch('/stories');
         const data = await response.json();
         const stories = data.stories;
@@ -64,10 +192,14 @@ async function loadStories(page = 1) {
         const endIndex = Math.min(startIndex + STORIES_PER_PAGE, totalStories);
         const pageStories = stories.slice(startIndex, endIndex);
         
-        const container = document.getElementById('savedStories');
-        
-        // Clear container
+        // Clear container after loading
         container.innerHTML = '';
+        
+        // If no stories, show message
+        if (pageStories.length === 0) {
+            container.innerHTML = `<div class="no-stories">No stories saved yet. Generate your first story!</div>`;
+            return;
+        }
         
         // Add stories for current page
         if (pageStories.length > 0) {
@@ -201,51 +333,6 @@ document.addEventListener('click', async (e) => {
 
             if (data.story) {
                 await streamAudio(data.story, data.language);
-                // document.getElementById('storyOutput').textContent = data.story;
-
-                // // Stream audio
-                // const audioPlayer = document.getElementById('audioPlayer');
-                // const responseStream = await fetch('/stream_audio', {
-                //     method: 'POST',
-                //     headers: { 'Content-Type': 'application/json' },
-                //     body: JSON.stringify({
-                //         story: data.story,
-                //         language: data.language,
-                //     }),
-                // });
-
-                // const reader = responseStream.body.getReader();
-                // const mediaSource = new MediaSource();
-                // audioPlayer.src = URL.createObjectURL(mediaSource);
-
-                // mediaSource.addEventListener('sourceopen', async () => {
-                //     const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
-                //     sourceBuffer.mode = 'sequence'; // Avoid overlapping issues
-                //     let done = false;
-
-                //     while (!done) {
-                //         const { value, done: readerDone } = await reader.read();
-                //         if (value) {
-                //             if (sourceBuffer.updating) {
-                //                 // Wait until the buffer is ready for new data
-                //                 await new Promise(resolve => {
-                //                     sourceBuffer.addEventListener('updateend', resolve, { once: true });
-                //                 });
-                //             }
-                //             sourceBuffer.appendBuffer(value);
-                //         }
-                //         done = readerDone;
-                //     }
-
-                //     // End the stream once all chunks are appended
-                //     sourceBuffer.addEventListener('updateend', () => {
-                //         if (done) {
-                //             mediaSource.endOfStream();
-                //         }
-                //     });
-                // });
-
-                // audioPlayer.play();
             }
         } catch (error) {
             console.error('Error loading story:', error);
@@ -273,15 +360,24 @@ async function generateStory() {
     const storyOutput = document.getElementById('storyOutput');
 
     if (!theme) {
-        alert('Please enter a theme');
+        alert('Please enter a theme for the story');
         return;
     }
 
-    generateBtn.disabled = true;
-    generateBtn.textContent = 'Generating...';
-    storyOutput.textContent = 'Generating story...';
-
     try {
+        // Show loading animation in story output
+        storyOutput.innerHTML = `
+            <div class="loading-indicator">
+                <div class="loading"><div></div><div></div><div></div><div></div></div>
+                <p>Creating your magical story...</p>
+            </div>
+        `;
+        
+        // Disable generate button during generation
+        const originalBtnText = generateBtn.innerHTML;
+        generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+        generateBtn.disabled = true;
+        
         // Create EventSource for server-sent events
         const eventSource = new EventSource(`/generate?theme=${encodeURIComponent(theme)}&language=${encodeURIComponent(language)}`);
         let story = '';
@@ -297,13 +393,14 @@ async function generateStory() {
                 if (data.chunk) {
                     story += data.chunk;
                     storyOutput.textContent = story;
+                    storyOutput.classList.add('story-fade-in');
                 }
                 
                 if (data.done) {
                     eventSource.close();
                     readBtn.disabled = false;
+                    generateBtn.innerHTML = originalBtnText;
                     generateBtn.disabled = false;
-                    generateBtn.textContent = 'Generate Story';
                 }
             } catch (e) {
                 console.error('Error parsing SSE data:', e);
@@ -315,16 +412,16 @@ async function generateStory() {
         eventSource.onerror = function(error) {
             console.error('EventSource error:', error);
             eventSource.close();
-            storyOutput.textContent = 'Error generating story. Please try again.';
+            storyOutput.innerHTML = `<div class="error-message">Error generating story. Please try again.</div>`;
+            generateBtn.innerHTML = originalBtnText;
             generateBtn.disabled = false;
-            generateBtn.textContent = 'Generate Story';
         };
 
     } catch (error) {
         console.error('Error:', error);
-        storyOutput.textContent = 'Error generating story. Please try again.';
+        storyOutput.innerHTML = `<div class="error-message">An error occurred while generating the story</div>`;
+        generateBtn.innerHTML = originalBtnText;
         generateBtn.disabled = false;
-        generateBtn.textContent = 'Generate Story';
     }
 }
 
@@ -358,34 +455,89 @@ async function streamAudio(story, language) {
         const mediaSource = new MediaSource();
         audioPlayer.src = URL.createObjectURL(mediaSource);
 
+        // Set a timeout to handle stalled connections
+        let stallTimeout;
+        const resetStallTimeout = () => {
+            if (stallTimeout) clearTimeout(stallTimeout);
+            stallTimeout = setTimeout(() => {
+                console.log('Audio stream stalled, waiting for more data...');
+                // We don't end the stream here, just log the stall
+            }, 5000); // 5 seconds timeout
+        };
+
+        // Handle audio player events
+        audioPlayer.addEventListener('playing', resetStallTimeout, { once: false });
+        audioPlayer.addEventListener('waiting', resetStallTimeout, { once: false });
+        
         mediaSource.addEventListener('sourceopen', async () => {
             const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
             sourceBuffer.mode = 'sequence';
 
             const reader = response.body.getReader();
             let done = false;
+            let hasStartedPlaying = false;
 
+            // Start the stall detection
+            resetStallTimeout();
+
+            // Process chunks as they arrive
             while (!done) {
-                const { value, done: readerDone } = await reader.read();
-                if (value) {
-                    if (sourceBuffer.updating) {
-                        await new Promise(resolve => {
-                            sourceBuffer.addEventListener('updateend', resolve, { once: true });
-                        });
+                try {
+                    const { value, done: readerDone } = await reader.read();
+                    
+                    // Clear the stall timeout since we received data
+                    resetStallTimeout();
+                    
+                    if (value && value.byteLength > 0) {
+                        // Wait if the buffer is currently updating
+                        if (sourceBuffer.updating) {
+                            await new Promise(resolve => {
+                                sourceBuffer.addEventListener('updateend', resolve, { once: true });
+                            });
+                        }
+                        
+                        // Append the new chunk to the buffer
+                        sourceBuffer.appendBuffer(value);
+                        
+                        // Start playback if it hasn't started and we have some data
+                        if (!hasStartedPlaying && !audioPlayer.paused) {
+                            hasStartedPlaying = true;
+                        } else if (hasStartedPlaying && audioPlayer.paused) {
+                            // Try to resume if paused but we have more data
+                            audioPlayer.play().catch(e => console.warn('Could not resume playback:', e));
+                        }
                     }
-                    sourceBuffer.appendBuffer(value);
+                    
+                    done = readerDone;
+                } catch (error) {
+                    console.warn('Error while reading stream chunk:', error);
+                    // Don't terminate the stream on chunk errors, try to continue
+                    if (error.name !== 'AbortError') {
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait a bit before retrying
+                    } else {
+                        done = true; // Stop on abort
+                    }
                 }
-                done = readerDone;
             }
 
+            // Clean up the stall timeout
+            if (stallTimeout) clearTimeout(stallTimeout);
+
+            // End the stream properly when done
             sourceBuffer.addEventListener('updateend', () => {
                 if (done && !sourceBuffer.updating) {
-                    mediaSource.endOfStream();
+                    try {
+                        mediaSource.endOfStream();
+                    } catch (e) {
+                        console.warn('Error ending media stream:', e);
+                    }
                 }
             });
         });
 
-        await audioPlayer.play();
+        await audioPlayer.play().catch(e => {
+            console.warn('Initial playback failed, will retry when data arrives:', e);
+        });
     } catch (error) {
         console.error('Error streaming audio:', error);
     }
@@ -396,3 +548,7 @@ document.getElementById('readBtn').addEventListener('click', async () => {
     const language = document.getElementById('language').value;
     await streamAudio(story, language);
 });
+
+// Add event listeners for random read and stop buttons
+document.getElementById('randomReadBtn').addEventListener('click', () => readRandomStory(true));
+document.getElementById('stopReadBtn').addEventListener('click', stopContinuousReading);

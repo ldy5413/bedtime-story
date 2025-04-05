@@ -20,13 +20,14 @@ def create_app():
     # Register blueprints
     try:
         from .story import story_bp
-        from .tts import tts_bp
+        from .tts import tts_bp, download_bp
         from .db import db_bp
         from .general import general_bp
         from .auth import auth_bp
         
         app.register_blueprint(story_bp)
         app.register_blueprint(tts_bp)
+        app.register_blueprint(download_bp)
         app.register_blueprint(db_bp)
         app.register_blueprint(general_bp)
         app.register_blueprint(auth_bp, url_prefix='/auth')

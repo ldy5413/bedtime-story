@@ -217,6 +217,7 @@ async function loadStories(page = 1) {
                     <p class="story-preview">${story.preview}...</p>
                     <div class="story-actions">
                         <button class="read-story-btn" data-id="${story.id}">Read</button>
+                        <button class="download-audio-btn" data-id="${story.id}"><i class="fas fa-download"></i> Download</button>
                         <button class="delete-story-btn" data-id="${story.id}">Delete</button>
                     </div>
                 `;
@@ -278,6 +279,50 @@ function addStoryButtonListeners() {
                 document.getElementById('readBtn').disabled = false;
             } catch (error) {
                 console.error('Error loading story:', error);
+            }
+        });
+    });
+
+    // Add event listeners for download buttons
+    document.querySelectorAll('.download-audio-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const storyId = btn.dataset.id;
+            try {
+                // Show loading state
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Downloading...';
+                btn.disabled = true;
+                
+                // Get the story data to pass to the download endpoint
+                const storyResponse = await fetch(`/stories/${storyId}`);
+                const storyData = await storyResponse.json();
+                
+                if (!storyData.story) {
+                    throw new Error('Failed to load story content');
+                }
+                
+                // Get the current TTS service and language
+                const ttsService = document.getElementById('tts-service').value;
+                const language = storyData.language || 'zh';
+                
+                // Create a download link
+                const downloadLink = document.createElement('a');
+                downloadLink.href = `/download_audio?story_id=${storyId}&tts_service=${ttsService}`;
+                downloadLink.download = `story_${storyId}.mp3`;
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+                
+                // Reset button state
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }, 1000);
+            } catch (error) {
+                console.error('Error downloading audio:', error);
+                alert('Failed to download audio. Please try again.');
+                btn.innerHTML = '<i class="fas fa-download"></i> Download';
+                btn.disabled = false;
             }
         });
     });

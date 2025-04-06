@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 import sqlite3
 from functools import wraps
 import os
+from app.db import get_db_connection, get_placeholder
 
 def create_app():
     app = Flask(__name__)
@@ -43,7 +44,7 @@ def create_app():
     @admin_required
     def dashboard():
         try:
-            with sqlite3.connect(DATABASE) as conn:
+            with get_db_connection() as conn:
                 cursor = conn.cursor()
                 
                 # Get user statistics
@@ -68,7 +69,7 @@ def create_app():
     @admin_required
     def users():
         try:
-            with sqlite3.connect(DATABASE) as conn:
+            with get_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT username, email, created_at,
@@ -87,10 +88,11 @@ def create_app():
     @admin_required
     def delete_user(username):
         try:
-            with sqlite3.connect(DATABASE) as conn:
+            placeholder = get_placeholder()
+            with get_db_connection() as conn:
                 cursor = conn.cursor()
                 # Delete user and all related data
-                cursor.execute('DELETE FROM users WHERE username = ?', (username,))
+                cursor.execute(f'DELETE FROM users WHERE username = {placeholder}', (username,))
                 flash(f'User {username} deleted successfully')
         except Exception as e:
             flash(f'Error deleting user: {str(e)}')

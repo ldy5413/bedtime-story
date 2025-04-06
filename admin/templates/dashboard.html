@@ -1,33 +1,104 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Admin Dashboard</title>
+    <title>Admin Dashboard - Bedtime Story Generator</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
 </head>
 <body>
     <div class="admin-container">
         {% include 'nav.html' %}
         
         <main class="content">
-            <h1>Dashboard</h1>
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="flash-message">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
             
-            <div class="stats-grid">
+            <div class="panel-header">
+                <h1>Admin Dashboard</h1>
+            </div>
+            
+            <div class="stats-container">
                 <div class="stat-card">
-                    <h3>Total Users</h3>
-                    <p class="stat-number">{{ total_users }}</p>
+                    <div class="stat-icon">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Total Users</h3>
+                        <p class="stat-number">{{ total_users }}</p>
+                    </div>
                 </div>
                 
                 <div class="stat-card">
-                    <h3>Total Stories</h3>
-                    <p class="stat-number">{{ total_stories }}</p>
+                    <div class="stat-icon">
+                        <i class="fas fa-book"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Total Stories</h3>
+                        <p class="stat-number">{{ total_stories }}</p>
+                    </div>
                 </div>
                 
                 <div class="stat-card">
-                    <h3>Voice Profiles</h3>
-                    <p class="stat-number">{{ total_voice_profiles }}</p>
+                    <div class="stat-icon">
+                        <i class="fas fa-microphone"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>Voice Profiles</h3>
+                        <p class="stat-number">{{ total_voice_profiles }}</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="admin-panels">
+                <div class="admin-panel">
+                    <div class="panel-header">
+                        <h2>Recent Activity</h2>
+                    </div>
+                    <div class="activity-list">
+                        <div class="activity-item">
+                            <span class="activity-icon"><i class="fas fa-user-plus"></i></span>
+                            <span class="activity-description">New user registration</span>
+                            <span class="activity-date">Today</span>
+                        </div>
+                        <div class="activity-item">
+                            <span class="activity-icon"><i class="fas fa-book"></i></span>
+                            <span class="activity-description">New story created</span>
+                            <span class="activity-date">Yesterday</span>
+                        </div>
+                        <div class="activity-item">
+                            <span class="activity-icon"><i class="fas fa-microphone"></i></span>
+                            <span class="activity-description">New voice profile added</span>
+                            <span class="activity-date">2 days ago</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="admin-panel">
+                    <div class="panel-header">
+                        <h2>System Status</h2>
+                    </div>
+                    <div class="status-list">
+                        <div class="status-item">
+                            <span class="status-label">Database</span>
+                            <span class="status-value status-ok">Connected</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">TTS Service</span>
+                            <span class="status-value status-ok">Online</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Story Generation</span>
+                            <span class="status-value status-ok">Available</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </main>
     </div>
 </body>
-</html> 
+</html>

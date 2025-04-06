@@ -2,9 +2,27 @@
 <html>
 <head>
     <title>Dashboard - Bedtime Story Generator</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='enhanced_styles.css') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <script src="{{ url_for('static', filename='voice_profile.js') }}"></script>
+    <style>
+        .dashboard-container {
+            padding: 30px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 2rem;
+        }
+        @media (max-width: 768px) {
+            .stats-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
 <body>
     <div class="dashboard-container">
@@ -13,6 +31,10 @@
             <button onclick="window.location.href='{{ url_for('auth.logout') }}'" class="logout-btn">Logout</button>
         </nav>
         
+        <div class="panel-header">
+            <h1>My Dashboard</h1>
+        </div>
+        
         <div class="user-profile">
             <div class="avatar-container">
                 {% if user.avatar_url %}
@@ -20,49 +42,66 @@
                 {% else %}
                     <img src="{{ url_for('static', filename='avatars/default_avatar.png') }}" alt="Default Avatar" class="avatar">
                 {% endif %}
-                <form action="{{ url_for('auth.upload_avatar') }}" method="POST" enctype="multipart/form-data" class="avatar-form">
-                    <input type="file" name="avatar" accept="image/*" id="avatar-input">
-                    <button type="submit">Update Avatar</button>
-                </form>
             </div>
             
             <div class="user-info">
                 <h2>{{ user.username }}</h2>
                 <p>Member since: {{ user.created_at }}</p>
+                <form action="{{ url_for('auth.upload_avatar') }}" method="POST" enctype="multipart/form-data" class="avatar-form">
+                    <input type="file" name="avatar" accept="image/*" id="avatar-input">
+                    <button type="submit" class="action-btn"><i class="fas fa-upload"></i> Update Avatar</button>
+                </form>
             </div>
         </div>
 
         <div class="stats-container">
             <div class="stat-card">
-                <h3>Total Stories</h3>
-                <p class="stat-number">{{ stats.total_stories }}</p>
+                <div class="stat-icon">
+                    <i class="fas fa-book"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>Total Stories</h3>
+                    <p class="stat-number">{{ stats.total_stories }}</p>
+                </div>
             </div>
             <div class="stat-card">
-                <h3>Favorite Stories</h3>
-                <p class="stat-number">{{ stats.favorite_stories }}</p>
+                <div class="stat-icon">
+                    <i class="fas fa-heart"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>Favorite Stories</h3>
+                    <p class="stat-number">{{ stats.favorite_stories }}</p>
+                </div>
             </div>
             <div class="stat-card">
-                <h3>Stories This Month</h3>
-                <p class="stat-number">{{ stats.stories_this_month }}</p>
+                <div class="stat-icon">
+                    <i class="fas fa-calendar-alt"></i>
+                </div>
+                <div class="stat-content">
+                    <h3>Stories This Month</h3>
+                    <p class="stat-number">{{ stats.stories_this_month }}</p>
+                </div>
             </div>
         </div>
 
-        <div class="voice-profiles">
-            <h3>Voice Profiles</h3>
+        <div class="voice-profiles admin-panel">
+            <div class="panel-header">
+                <h2>Voice Profiles</h2>
+            </div>
             <div class="voice-profile-form">
                 <form action="{{ url_for('auth.create_voice_profile') }}" method="POST" enctype="multipart/form-data">
                     <div class="form-group">
-                        <label for="profile-name">Profile Name:</label>
+                        <label for="profile-name"><i class="fas fa-signature"></i> Profile Name:</label>
                         <input type="text" id="profile-name" name="name" required>
                     </div>
                     
                     <div class="form-group">
-                        <label for="reference-text">Reference Text:</label>
-                        <input id="reference-text" name="reference_text" required></textarea>
+                        <label for="reference-text"><i class="fas fa-quote-left"></i> Reference Text:</label>
+                        <input id="reference-text" name="reference_text" required>
                     </div>
                     
                     <div class="form-group">
-                        <label>Voice Input Method:</label>
+                        <label><i class="fas fa-microphone-alt"></i> Voice Input Method:</label>
                         <select id="input-method" name="input_method">
                             <option value="upload">Upload Audio File</option>
                             <option value="record">Record Voice</option>
@@ -78,11 +117,11 @@
                             <p>Please read the reference text above when recording your voice.</p>
                         </div>
                         <div class="recording-controls">
-                            <div class="record-buttons">
-                                <button type="button" id="startRecordBtn" onclick="startRecording()" class="record-btn">
+                            <div class="record-buttons button-group">
+                                <button type="button" id="startRecordBtn" onclick="startRecording()" class="action-btn">
                                     <i class="fas fa-microphone"></i> Start Recording
                                 </button>
-                                <button type="button" id="stopRecordBtn" onclick="stopRecording()" class="record-btn" disabled>
+                                <button type="button" id="stopRecordBtn" onclick="stopRecording()" class="action-btn" disabled>
                                     <i class="fas fa-stop"></i> Stop Recording
                                 </button>
                             </div>
@@ -97,24 +136,25 @@
                         <input type="hidden" name="recorded_audio" id="recorded-audio-data">
                     </div>
                     
-                    <button type="submit">Create Voice Profile</button>
+                    <button type="submit" class="action-btn"><i class="fas fa-plus-circle"></i> Create Voice Profile</button>
                 </form>
             </div>
             
             <div class="existing-profiles">
+                <h3>Your Profiles</h3>
                 {% if voice_profiles %}
                     {% for profile in voice_profiles %}
-                    <div class="profile-card">
-                        <div class="profile-header">
+                    <div class="profile-card story-card">
+                        <div class="profile-header story-card-header">
                             <h4>{{ profile.name }}</h4>
                             <form action="{{ url_for('auth.delete_voice_profile', profile_id=profile.id) }}" method="POST" class="delete-form">
-                                <button type="submit" class="delete-btn" onclick="return confirm('Are you sure you want to delete this voice profile?')">Delete</button>
+                                <button type="submit" class="delete-btn" onclick="return confirm('Are you sure you want to delete this voice profile?')"><i class="fas fa-trash-alt"></i> Delete</button>
                             </form>
                         </div>
-                        <p>Language: {{ profile.language }}</p>
-                        <p>Created: {{ profile.created_at }}</p>
-                        <p>Reference Text: {{ profile.reference_text }}</p>
-                        <audio controls src="{{ url_for('auth.get_profile_audio', profile_id=profile.id) }}"></audio>
+                        <p><strong><i class="fas fa-language"></i> Language:</strong> {{ profile.language }}</p>
+                        <p><strong><i class="fas fa-calendar-day"></i> Created:</strong> {{ profile.created_at }}</p>
+                        <p><strong><i class="fas fa-quote-right"></i> Reference Text:</strong> {{ profile.reference_text }}</p>
+                        <audio controls src="{{ url_for('auth.get_profile_audio', profile_id=profile.id) }}" class="audio-player"></audio>
                     </div>
                     {% endfor %}
                 {% else %}
@@ -123,17 +163,25 @@
             </div>
         </div>
 
-        <div class="recent-activity">
-            <h3>Recent Activity</h3>
+        <div class="recent-activity admin-panel">
+            <div class="panel-header">
+                <h2>Recent Activity</h2>
+            </div>
             <div class="activity-list">
                 {% for activity in recent_activities %}
                     <div class="activity-item">
-                        <span class="activity-date">{{ activity.date }}</span>
-                        <span class="activity-description">{{ activity.description }}</span>
+                        <div class="activity-icon">
+                            <i class="fas fa-book"></i>
+                        </div>
+                        <div class="activity-description">{{ activity.description }}</div>
+                        <div class="activity-date">{{ activity.date }}</div>
                     </div>
                 {% endfor %}
+                {% if not recent_activities %}
+                    <p class="no-activities">No recent activities to display.</p>
+                {% endif %}
             </div>
         </div>
     </div>
 </body>
-</html> 
+</html>

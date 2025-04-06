@@ -612,6 +612,53 @@ button:disabled {
     100% { transform: translate(24px, 0); }
 }
 
+/* Dashboard User Profile Styles */
+.user-profile {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    background: white;
+    padding: 1.5rem;
+    border-radius: var(--border-radius);
+    box-shadow: var(--box-shadow);
+    margin-bottom: 2rem;
+}
+
+.avatar-container {
+    flex: 0 0 auto;
+}
+
+.avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid var(--primary-color);
+}
+
+.user-info {
+    flex: 1;
+}
+
+.user-info h2 {
+    margin: 0 0 5px 0;
+    color: var(--primary-color);
+}
+
+.avatar-form {
+    margin-top: 10px;
+}
+
+.avatar-form input[type="file"] {
+    display: inline-block;
+}
+
+.avatar-form button {
+    display: inline-block;
+    margin-left: 10px;
+    padding: 8px 16px;
+}
+
 /* Auth Styles */
 .auth-container {
     display: flex;

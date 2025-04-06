@@ -4,7 +4,7 @@ import json
 from app.utils import detect_language
 import sqlite3
 from app.auth.auth import login_required
-
+from app.db import get_db_connection, get_placeholder
 
 story_bp = Blueprint('story', __name__)
 @story_bp.route('/generate', methods=['GET'])
@@ -96,7 +96,7 @@ def generate_story(theme, language='en'):
         content = f"Write a medium length bedtime story (around 1000 words) that combines these themes: {theme}. Make it appropriate for children aged 3-8."
         if language == 'zh':
             system_message = "你是一个富有创意的儿童故事作家。"
-            content = f"写一个结合这些主题的中等长度的睡前故事（大约1000字）：{theme}。故事要适合3-8岁的儿童。"
+            content = f"写一个结合这些主题的中等长度的睡前故事（大约1000字）：{theme}。故事要适合3-8岁的儿童。请返回故事标题与内容即可, 不要使用markdown格式"
         
         current_app.logger.info("Making API request...")
         
@@ -125,10 +125,13 @@ def generate_story(theme, language='en'):
 def save_story(theme, content, user_id):
     try:
         current_app.logger.info(f"Attempting to save story with theme: {theme}")
-        with sqlite3.connect(current_app.config['DATABASE']) as conn:
-            conn.execute('''
+        placeholder = get_placeholder()
+        current_app.logger.info(f"Using placeholder: {placeholder}")
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f'''
                 INSERT INTO stories (theme, content, user_id) 
-                VALUES (?, ?, ?)
+                VALUES ({placeholder}, {placeholder}, {placeholder})
             ''', (theme, content, user_id))
             current_app.logger.info("Story saved successfully")
     except Exception as e:

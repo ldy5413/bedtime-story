@@ -1,12 +1,12 @@
 import io
 import re
-import sqlite3
 from flask import request, send_file, Blueprint, current_app, session, jsonify
 from app.auth.auth import login_required
 from gtts import gTTS
 import requests
 import base64
 from app.utils import split_text_into_chunks, scan_voice_profiles
+from app.db.db_utils import get_db_connection, get_placeholder
 
 download_bp = Blueprint('download', __name__)
 
@@ -24,12 +24,14 @@ def download_audio():
             return jsonify({'error': 'Story ID is required'}), 400
         
         # Get story content from database
-        with sqlite3.connect(current_app.config['DATABASE']) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = get_placeholder()
+        try:
+            cursor.execute(f'''
                 SELECT content, theme 
                 FROM stories 
-                WHERE id = ? AND user_id = ?
+                WHERE id = {placeholder} AND user_id = {placeholder}
             ''', (story_id, session['user_id']))
             story_data = cursor.fetchone()
             
@@ -42,7 +44,8 @@ def download_audio():
             # Detect language from story content since it's not stored in the database
             from app.utils import detect_language
             language = detect_language(story)
-        
+        except Exception as e:
+            current_app.logger.error(f"Error fetching story data: {str(e)}")
         # Create a BytesIO object to store the audio
         audio_buffer = io.BytesIO()
         
@@ -58,7 +61,7 @@ def download_audio():
         
         elif tts_service == 'f5tts':
             # Clean the text for F5TTS
-            story = re.sub(r'《》*#', '', story)
+            story = re.sub(r'[《》*#]', '', story)
             
             # Get voice profile
             voice_profile = None
@@ -89,11 +92,12 @@ def download_audio():
                 try:
                     current_app.logger.info(f"Processing chunk {i+1}/{len(story_chunks)}")
                     # Check if chunk is in cache
-                    cursor.execute('''
+                    placeholder = get_placeholder()
+                    cursor.execute(f'''
                         SELECT audio_data FROM audio_cache 
-                        WHERE chunk_text = ? AND voice_profile = ? 
-                        AND (user_id = ? OR user_id IS NULL)
-                        AND language = ?
+                        WHERE chunk_text = {placeholder} AND voice_profile = {placeholder} 
+                        AND (user_id = {placeholder} OR user_id IS NULL)
+                        AND language = {placeholder}
                     ''', (chunk, voice_name, session['user_id'], language))
                     cached_audio = cursor.fetchone()
                     
@@ -131,12 +135,13 @@ def download_audio():
                             total_audio_size += len(response.content)
                             
                             # Cache the audio data
-                            cursor.execute('''
+                            placeholder = get_placeholder()
+                            cursor.execute(f'''
                                 INSERT INTO audio_cache (
                                     chunk_text, audio_data, voice_profile, 
                                     user_id, language
                                 )
-                                VALUES (?, ?, ?, ?, ?)
+                                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
                             ''', (chunk, response.content, voice_name, 
                                   session['user_id'], language))
                             conn.commit()
@@ -153,7 +158,6 @@ def download_audio():
         else:
             current_app.logger.error(f"Invalid TTS service requested: {tts_service}")
             return jsonify({'error': 'Invalid TTS service'}), 400
-            
         # Write all audio data to the buffer in sequence
         current_app.logger.info(f"Writing {len(audio_data_chunks)} audio chunks to buffer")
         
@@ -216,3 +220,6 @@ def download_audio():
     except Exception as e:
         current_app.logger.error(f"Error in download_audio: {str(e)}")
         return jsonify({'error': 'Failed to generate audio file'}), 500
+    finally:
+        if conn:
+            conn.close()

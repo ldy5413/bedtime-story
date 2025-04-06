@@ -12,7 +12,7 @@ def create_app():
     
     # Initialize the database
     try:
-        init_db(app.config['DATABASE'])
+        init_db(app.config['DATABASE'], app)
         app.logger.info("Database initialized successfully")
     except Exception as e:
         app.logger.error(f"Database initialization failed: {str(e)}")

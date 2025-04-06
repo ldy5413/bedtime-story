@@ -1,7 +1,7 @@
 from flask import jsonify, Response, current_app, Blueprint, session
-import sqlite3
 import requests
 from app.utils import scan_voice_profiles, split_text_into_chunks
+from app.db import get_db_connection, get_placeholder
 import base64
 tts_bp = Blueprint('tts', __name__)
 def stream_f5tts_audio(story, language, voice_profile, DATABASE):
@@ -15,8 +15,11 @@ def stream_f5tts_audio(story, language, voice_profile, DATABASE):
     try:
         if isinstance(voice_profile, dict):
             ref_audio = voice_profile.get('ref_audio')
-            # Convert bytes to base64 string if ref_audio is in bytes
-            if isinstance(ref_audio, bytes):
+            # Convert bytes or memoryview to base64 string
+            if isinstance(ref_audio, (bytes, memoryview)):
+                # Convert memoryview to bytes if needed
+                if isinstance(ref_audio, memoryview):
+                    ref_audio = bytes(ref_audio)
                 ref_audio = {'data':base64.b64encode(ref_audio).decode('utf-8'), 'type':'base64'}
             ref_text = voice_profile.get('ref_text')
             voice_name = voice_profile.get('name', 'default')
@@ -31,8 +34,11 @@ def stream_f5tts_audio(story, language, voice_profile, DATABASE):
                 return jsonify({'error': f'No voice profile available for language {language}'}), 400
             
             ref_audio = profiles[language][0]['ref_audio']
-            # Convert bytes to base64 string if ref_audio is in bytes
-            if isinstance(ref_audio, bytes):
+            # Convert bytes or memoryview to base64 string
+            if isinstance(ref_audio, (bytes, memoryview)):
+                # Convert memoryview to bytes if needed
+                if isinstance(ref_audio, memoryview):
+                    ref_audio = bytes(ref_audio)
                 ref_audio = {'data':base64.b64encode(ref_audio).decode('utf-8'), 'type':'base64'}
             ref_text = profiles[language][0]['ref_text']
             voice_name = profiles[language][0].get('name', 'default')
@@ -43,21 +49,28 @@ def stream_f5tts_audio(story, language, voice_profile, DATABASE):
         def generate():
             # Create a new application context for the generator
             with app.app_context():
-                with sqlite3.connect(DATABASE) as conn:
+                conn = get_db_connection()
+                try:
+                    placeholder = get_placeholder()
                     for i, chunk in enumerate(story_chunks):
                         try:
                             cursor = conn.cursor()
-                            cursor.execute('''
+                            cursor.execute(f'''
                                 SELECT audio_data FROM audio_cache 
-                                WHERE chunk_text = ? AND voice_profile = ? 
-                                AND (user_id = ? OR user_id IS NULL)
-                                AND language = ?
+                                WHERE chunk_text = {placeholder} AND voice_profile = {placeholder} 
+                                AND (user_id = {placeholder} OR user_id IS NULL)
+                                AND language = {placeholder}
                             ''', (chunk, voice_name, user_id, language))
                             cached_audio = cursor.fetchone()
 
                             if cached_audio:
                                 current_app.logger.debug(f"Using cached audio for chunk {i+1}")
-                                yield cached_audio[0]
+                                # Ensure cached_audio is in bytes format
+                                audio_data = cached_audio[0]
+                                if not isinstance(audio_data, bytes):
+                                    current_app.logger.debug(f"Converting cached audio to bytes")
+                                    audio_data = bytes(audio_data)
+                                yield audio_data
                             else:
                                 current_app.logger.debug(f"Generating new audio for chunk {i+1}")
                                 response = requests.post(
@@ -79,12 +92,13 @@ def stream_f5tts_audio(story, language, voice_profile, DATABASE):
                                     raise Exception(f'F5 TTS API error: {response.status_code}')
                                 
                                 audio_data = response.content
-                                cursor.execute('''
+                                placeholder = get_placeholder()
+                                cursor.execute(f'''
                                     INSERT INTO audio_cache (
                                         chunk_text, audio_data, voice_profile, 
                                         user_id, language
                                     )
-                                    VALUES (?, ?, ?, ?, ?)
+                                    VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
                                 ''', (chunk, audio_data, voice_name, 
                                      user_id, language))
                                 conn.commit()
@@ -92,6 +106,8 @@ def stream_f5tts_audio(story, language, voice_profile, DATABASE):
                         except Exception as e:
                             current_app.logger.error(f"Error processing chunk {i+1}: {str(e)}")
                             raise
+                finally:
+                    conn.close()
 
         return Response(generate(), mimetype='audio/mpeg')
     except Exception as e:

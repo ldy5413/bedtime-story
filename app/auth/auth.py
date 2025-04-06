@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file, jsonify
-import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
+from app.db.db_utils import get_db_connection, get_placeholder
 from functools import wraps
 import os
 from werkzeug.utils import secure_filename
@@ -27,16 +27,17 @@ def login():
         password = request.form.get('password')
         
         try:
-            with sqlite3.connect(current_app.config['DATABASE']) as conn:
-                cursor = conn.cursor()
-                cursor.execute('SELECT username, password_hash FROM users WHERE username = ?', (username,))
-                user = cursor.fetchone()
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            placeholder = get_placeholder()
+            cursor.execute(f'SELECT username, password_hash FROM users WHERE username = {placeholder}', (username,))            
+            user = cursor.fetchone()
                 
-                if user and check_password_hash(user[1], password):
-                    session['user_id'] = user[0]
-                    return redirect(url_for('general.index'))
-                else:
-                    flash('Invalid username or password')
+            if user and check_password_hash(user[1], password):
+                session['user_id'] = user[0]
+                return redirect(url_for('general.index'))
+            else:
+                flash('Invalid username or password')
         except Exception as e:
             current_app.logger.error(f"Login error: {str(e)}")
             flash('An error occurred during login')
@@ -84,13 +85,18 @@ def register():
                 return render_template('auth/register.html')
             
             # If verification successful, create the user
-            with sqlite3.connect(current_app.config['DATABASE']) as conn:
-                cursor = conn.cursor()
-                password_hash = generate_password_hash(password)
-                cursor.execute('''
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            placeholder = get_placeholder()
+            password_hash = generate_password_hash(password)
+            try:
+                cursor.execute(f'''
                     INSERT INTO users (username, email, password_hash) 
-                    VALUES (?, ?, ?)
+                    VALUES ({placeholder}, {placeholder}, {placeholder})
                 ''', (username, email, password_hash))
+                conn.commit()
+            finally:
+                conn.close()
                 
             # Clear verification data
             session.pop('verification_data', None)
@@ -138,13 +144,16 @@ def verify_email():
                              password=password)
     
     try:
-        with sqlite3.connect(current_app.config['DATABASE']) as conn:
-            cursor = conn.cursor()
-            password_hash = generate_password_hash(password)
-            cursor.execute('''
-                INSERT INTO users (username, email, password_hash) 
-                VALUES (?, ?, ?)
-            ''', (username, email, password_hash))
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = get_placeholder()
+        password_hash = generate_password_hash(password)
+        cursor.execute(f'''
+            INSERT INTO users (username, email, password_hash) 
+            VALUES ({placeholder}, {placeholder}, {placeholder})
+        ''', (username, email, password_hash))
+        conn.commit()
+        conn.close()
             
         # Clear verification data
         session.pop('verification_data', None)
@@ -172,46 +181,53 @@ def allowed_file(filename):
 def dashboard():
     current_app.logger.info("Accessing dashboard route")
     try:
-        with sqlite3.connect(current_app.config['DATABASE']) as conn:
-            cursor = conn.cursor()
-            
-            # Get user info
-            cursor.execute('''
-                SELECT username, created_at, avatar_url 
-                FROM users 
-                WHERE username = ?
-            ''', (session['user_id'],))
-            user_data = cursor.fetchone()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = get_placeholder()
+        
+        # Get user info
+        cursor.execute(f'''
+            SELECT username, created_at, avatar_url 
+            FROM users 
+            WHERE username = {placeholder}
+        ''', (session['user_id'],))
+        user_data = cursor.fetchone()
             
             # Get statistics
-            cursor.execute('''
+        db_type = current_app.config.get('DB_TYPE', 'local')
+        date_function = "date('now', '-30 days')" if db_type == 'local' else "CURRENT_DATE - INTERVAL '30 days'"
+            
+        # Use different syntax for boolean comparison based on database type
+        favorite_condition = "favorite = TRUE" if db_type == 'postgresql' else "favorite = 1"
+        
+        cursor.execute(f'''
                 SELECT 
                     COUNT(*) as total_stories,
-                    SUM(CASE WHEN favorite = 1 THEN 1 ELSE 0 END) as favorite_stories,
-                    SUM(CASE WHEN created_at >= date('now', '-30 days') THEN 1 ELSE 0 END) as stories_this_month
+                    SUM(CASE WHEN {favorite_condition} THEN 1 ELSE 0 END) as favorite_stories,
+                    SUM(CASE WHEN created_at >= {date_function} THEN 1 ELSE 0 END) as stories_this_month
                 FROM stories 
-                WHERE user_id = ?
+                WHERE user_id = {placeholder}
             ''', (session['user_id'],))
-            stats_data = cursor.fetchone()
+        stats_data = cursor.fetchone()
             
             # Get recent activities
-            cursor.execute('''
+        cursor.execute(f'''
                 SELECT created_at, theme 
                 FROM stories 
-                WHERE user_id = ? 
+                WHERE user_id = {placeholder} 
                 ORDER BY created_at DESC 
                 LIMIT 5
             ''', (session['user_id'],))
-            activities = cursor.fetchall()
+        activities = cursor.fetchall()
             
             # Get voice profiles
-            cursor.execute('''
+        cursor.execute(f'''
                 SELECT id, name, language, created_at, reference_text 
                 FROM voice_profiles 
-                WHERE user_id = ? 
+                WHERE user_id = {placeholder} 
                 ORDER BY created_at DESC
             ''', (session['user_id'],))
-            voice_profiles = [{
+        voice_profiles = [{
                 'id': row[0],
                 'name': row[1],
                 'language': row[2],
@@ -219,33 +235,35 @@ def dashboard():
                 'reference_text': row[4]
             } for row in cursor.fetchall()]
             
-            user = {
+        user = {
                 'username': user_data[0],
                 'created_at': user_data[1],
                 'avatar_url': user_data[2] if user_data[2] else 'avatars/default_avatar.png'  # Set default avatar path
             }
             
-            stats = {
+        stats = {
                 'total_stories': stats_data[0],
                 'favorite_stories': stats_data[1],
                 'stories_this_month': stats_data[2]
             }
             
-            recent_activities = [{
+        recent_activities = [{
                 'date': activity[0],
                 'description': f'Created story: {activity[1]}'
             } for activity in activities]
             
-            return render_template('dashboard.html', 
+        return render_template('dashboard.html', 
                                  user=user, 
                                  stats=stats, 
                                  recent_activities=recent_activities,
                                  voice_profiles=voice_profiles)
+
     except Exception as e:
         current_app.logger.error(f"Dashboard error: {str(e)}")
         flash('Error loading dashboard')
         return redirect(url_for('general.index'))
-
+    finally:
+        conn.close()
 @auth_bp.route('/upload_avatar', methods=['POST'])
 @login_required
 def upload_avatar():
@@ -284,12 +302,18 @@ def upload_avatar():
             avatar_url = 'avatars/' + filename  # Use forward slash explicitly
             
             # Update database
-            with sqlite3.connect(current_app.config['DATABASE']) as conn:
-                conn.execute('''
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            placeholder = get_placeholder()
+            try:
+                cursor.execute(f'''
                     UPDATE users 
-                    SET avatar_url = ? 
-                    WHERE username = ?
+                    SET avatar_url = {placeholder} 
+                    WHERE username = {placeholder}
                 ''', (avatar_url, session['user_id']))
+                conn.commit()
+            finally:
+                conn.close()
                 
             flash('Avatar updated successfully')
         except Exception as e:
@@ -357,12 +381,17 @@ def create_voice_profile():
         current_app.logger.info(f"Creating voice profile: {name}, Language: {language}")
         current_app.logger.info(f"Audio data size: {len(audio_data)} bytes")
         
-        with sqlite3.connect(current_app.config['DATABASE']) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = get_placeholder()
+        try:
+            cursor.execute(f'''
                 INSERT INTO voice_profiles (user_id, name, audio_data, reference_text, language)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
             ''', (session['user_id'], name, audio_data, reference_text, language))
+            conn.commit()
+        finally:
+            conn.close()
             
         flash('Voice profile created successfully')
     except Exception as e:
@@ -375,11 +404,13 @@ def create_voice_profile():
 @login_required
 def get_profile_audio(profile_id):
     try:
-        with sqlite3.connect(current_app.config['DATABASE']) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = get_placeholder()
+        try:
+            cursor.execute(f'''
                 SELECT audio_data FROM voice_profiles 
-                WHERE id = ? AND user_id = ?
+                WHERE id = {placeholder} AND user_id = {placeholder}
             ''', (profile_id, session['user_id']))
             result = cursor.fetchone()
             
@@ -388,6 +419,8 @@ def get_profile_audio(profile_id):
                     io.BytesIO(result[0]),
                     mimetype='audio/wav'
                 )
+        finally:
+            conn.close()
     except Exception as e:
         current_app.logger.error(f"Error retrieving profile audio: {str(e)}")
     return '', 404 
@@ -396,13 +429,18 @@ def get_profile_audio(profile_id):
 @login_required
 def delete_voice_profile(profile_id):
     try:
-        with sqlite3.connect(current_app.config['DATABASE']) as conn:
-            cursor = conn.cursor()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = get_placeholder()
+        try:
             # Verify ownership before deleting
-            cursor.execute('''
+            cursor.execute(f'''
                 DELETE FROM voice_profiles 
-                WHERE id = ? AND user_id = ?
+                WHERE id = {placeholder} AND user_id = {placeholder}
             ''', (profile_id, session['user_id']))
+            conn.commit()
+        finally:
+            conn.close()
             
         flash('Voice profile deleted successfully')
     except Exception as e:
@@ -415,12 +453,14 @@ def delete_voice_profile(profile_id):
 @login_required
 def get_voice_profiles():
     try:
-        with sqlite3.connect(current_app.config['DATABASE']) as conn:
-            cursor = conn.cursor()
-            cursor.execute('''
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = get_placeholder()
+        try:
+            cursor.execute(f'''
                 SELECT id, name, language 
                 FROM voice_profiles 
-                WHERE user_id = ? 
+                WHERE user_id = {placeholder} 
                 ORDER BY name
             ''', (session['user_id'],))
             profiles = [{
@@ -429,7 +469,9 @@ def get_voice_profiles():
                 'language': row[2]
             } for row in cursor.fetchall()]
             
-        return jsonify({'profiles': profiles})
+            return jsonify({'profiles': profiles})
+        finally:
+            conn.close()
     except Exception as e:
         current_app.logger.error(f"Error fetching voice profiles: {str(e)}")
         return jsonify({'error': 'Failed to fetch voice profiles'}), 500 
@@ -445,16 +487,20 @@ def send_verification():
             return jsonify({'success': False, 'message': 'Email and username are required'}), 400
             
         # Check if username exists
-        with sqlite3.connect(current_app.config['DATABASE']) as conn:
-            cursor = conn.cursor()
-            cursor.execute('SELECT username FROM users WHERE username = ?', (username,))
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        placeholder = get_placeholder()
+        try:
+            cursor.execute(f'SELECT username FROM users WHERE username = {placeholder}', (username,))
             if cursor.fetchone():
                 return jsonify({'success': False, 'message': 'Username already exists'}), 400
             
             # Check if email exists
-            cursor.execute('SELECT email FROM users WHERE email = ?', (email,))
+            cursor.execute(f'SELECT email FROM users WHERE email = {placeholder}', (email,))
             if cursor.fetchone():
                 return jsonify({'success': False, 'message': 'Email already registered'}), 400
+        finally:
+            conn.close()
         
         # Generate verification code
         verification_code = generate_verification_code()
@@ -475,4 +521,4 @@ def send_verification():
             
     except Exception as e:
         current_app.logger.error(f"Error sending verification code: {str(e)}")
-        return jsonify({'success': False, 'message': 'Server error'}), 500 
+        return jsonify({'success': False, 'message': 'Server error'}), 500

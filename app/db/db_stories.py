@@ -1,7 +1,7 @@
 from flask import request, jsonify, Blueprint, current_app, session
 from app.utils import detect_language
-import sqlite3
 from app.auth.auth import login_required
+from .db_utils import get_db_connection, get_placeholder
 
 db_bp = Blueprint('database', __name__)
 
@@ -10,12 +10,13 @@ db_bp = Blueprint('database', __name__)
 def get_stories():
     current_app.logger.info("Fetching stories...")
     try:
-        with sqlite3.connect(current_app.config['DATABASE']) as conn:
+        placeholder = get_placeholder()
+        with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
+            cursor.execute(f'''
                 SELECT id, theme, content, favorite 
                 FROM stories 
-                WHERE user_id = ? 
+                WHERE user_id = {placeholder} 
                 ORDER BY created_at DESC
             ''', (session['user_id'],))
             stories = cursor.fetchall()
@@ -41,12 +42,13 @@ def get_stories():
 @login_required
 def get_story(story_id):
     try:
-        with sqlite3.connect(current_app.config['DATABASE']) as conn:
+        placeholder = get_placeholder()
+        with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute('''
+            cursor.execute(f'''
                 SELECT content 
                 FROM stories 
-                WHERE id = ? AND user_id = ?
+                WHERE id = {placeholder} AND user_id = {placeholder}
             ''', (story_id, session['user_id']))
             story = cursor.fetchone()
             
@@ -65,10 +67,12 @@ def get_story(story_id):
 @login_required
 def delete_story(story_id):
     try:
-        with sqlite3.connect(current_app.config['DATABASE']) as conn:
-            conn.execute('''
+        placeholder = get_placeholder()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f'''
                 DELETE FROM stories 
-                WHERE id = ? AND user_id = ?
+                WHERE id = {placeholder} AND user_id = {placeholder}
             ''', (story_id, session['user_id']))
             return jsonify({'message': 'Story deleted successfully'})
     except Exception as e:
@@ -82,11 +86,13 @@ def toggle_favorite(story_id):
         data = request.json
         favorite = data.get('favorite', False)
         
-        with sqlite3.connect(current_app.config['DATABASE']) as conn:
-            conn.execute('''
+        placeholder = get_placeholder()
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f'''
                 UPDATE stories 
-                SET favorite = ? 
-                WHERE id = ? AND user_id = ?
+                SET favorite = {placeholder} 
+                WHERE id = {placeholder} AND user_id = {placeholder}
             ''', (favorite, story_id, session['user_id']))
             return jsonify({'message': 'Favorite status updated successfully'})
     except Exception as e:

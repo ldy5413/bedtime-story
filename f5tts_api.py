@@ -35,7 +35,7 @@ DEFAULT_REF_AUDIO = files("f5_tts").joinpath("infer/examples/basic/basic_ref_zh.
 DEFAULT_REF_TEXT = "对,这就是我万人敬仰的太乙真人."
 
 # Load models on startup
-def load_f5tts(ckpt_path=str(cached_path("hf://SWivid/F5-TTS/F5TTS_Base/model_1200000.safetensors"))):
+def load_f5tts(ckpt_path=str(cached_path("hf://SWivid/F5-TTS/F5TTS_v1_Base/model_1250000.safetensors"))):
     F5TTS_model_cfg = dict(dim=1024, depth=22, heads=16, ff_mult=2, text_dim=512, conv_layers=4)
     return load_model(DiT, F5TTS_model_cfg, ckpt_path)
 
